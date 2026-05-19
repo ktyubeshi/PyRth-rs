@@ -2485,21 +2485,27 @@ fn require_first_pairs(parameters: &Bound<'_, PyDict>, keys: &[&str]) -> PyResul
 }
 
 fn extract_calibration(parameters: &Bound<'_, PyDict>) -> PyResult<Option<Vec<[f64; 2]>>> {
-    parameters
-        .get_item("calibration")?
-        .map(|value| {
-            let pairs = value.extract::<Vec<(f64, f64)>>()?;
-            Ok(pairs
-                .into_iter()
-                .map(|(temperature, voltage)| [temperature, voltage])
-                .collect())
-        })
-        .transpose()
-        .map_err(|err: PyErr| {
-            PyValueError::new_err(format!(
-                "calibration must be a sequence of (temperature, voltage) pairs: {err}"
-            ))
-        })
+    for key in ["calibration", "calib"] {
+        let Some(value) = parameters.get_item(key)? else {
+            continue;
+        };
+        return value
+            .extract::<Vec<(f64, f64)>>()
+            .map(|pairs| {
+                pairs
+                    .into_iter()
+                    .map(|(temperature, voltage)| [temperature, voltage])
+                    .collect()
+            })
+            .map(Some)
+            .map_err(|err| {
+                PyValueError::new_err(format!(
+                    "{key} must be a sequence of (temperature, voltage) pairs: {err}"
+                ))
+            });
+    }
+
+    Ok(None)
 }
 
 fn extract_usize_pair(

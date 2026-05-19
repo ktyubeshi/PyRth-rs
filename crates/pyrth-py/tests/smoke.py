@@ -608,6 +608,17 @@ def main() -> None:
     )
     assert_close_list(volt_module["impedance"], [0.0, -10.0, -20.0])
 
+    volt_module_with_calib_alias = evaluation.standard_module(
+        {
+            "data": VOLT_DATA,
+            "input_mode": "volt",
+            "only_make_z": True,
+            "calib": CALIBRATION,
+            "kfac_fit_deg": 1,
+        }
+    )
+    assert_close_list(volt_module_with_calib_alias["impedance"], volt_module["impedance"])
+
     t3ster_module = evaluation.standard_module(
         {
             "input_mode": "t3ster",
