@@ -227,12 +227,13 @@ Lanczos Cauer coverage currently checks:
 - MPFR structure methods and full Python optimization parity are only partly
   ported.  With the non-default `mpfr` Cargo feature, `polylong` now routes
   through a `rug::Float` Foster rational/poly-long conversion using
-  `EvaluationParams.precision`; `sobhy` and `khatwani` are also wired through
-  feature-gated MPFR J-fraction helpers.  Without that feature they remain
-  unsupported.  A raw feature-gated Boor-Golub MPFR helper exists for parity
-  investigation, but `boor_golub` is still unsupported in `evaluate` because
-  the Python raw output can include a zero trailing resistance that does not
-  fit the current `CauerNetwork` contract.
+  `EvaluationParams.precision`; `sobhy` and `khatwani` are wired through
+  feature-gated MPFR J-fraction helpers; and `boor_golub` is connected through
+  a wrapper that drops Python's trailing zero-resistance sentinel before
+  constructing Rust's `CauerNetwork`.  Without that feature they remain
+  unsupported.  Feature verification still needs a supported GNU/Linux or
+  Windows GNU toolchain because Windows MSVC fails in `gmp-mpfr-sys` before
+  tests can compile.
 - Bootstrap and comparison currently cover core numerical helpers and thin
   `Evaluation` dict facades.  Core bootstrap can now run from theoretical RC
   models or from existing impedance inputs with deterministic seeded noise.

@@ -184,12 +184,12 @@ Goal:
 
 ### I. MPFR Structure Methods
 
-Status: feature-gated `polylong`, `sobhy`, and `khatwani` paths are
-implemented behind the non-default `mpfr` feature.  A raw feature-gated
-Boor-Golub helper is available for parity investigation, but it is not connected
-to `evaluate` yet.  `rug` is optional, and Windows MSVC cannot currently build
-`gmp-mpfr-sys`, so MPFR verification needs a supported GNU/Linux or Windows GNU
-toolchain.
+Status: feature-gated `polylong`, `sobhy`, `khatwani`, and `boor_golub` paths
+are implemented behind the non-default `mpfr` feature.  Boor-Golub adapts the
+Python-shaped raw output by dropping the trailing zero-resistance sentinel
+before constructing Rust's `CauerNetwork`.  `rug` is optional, and Windows MSVC
+cannot currently build `gmp-mpfr-sys`, so MPFR verification needs a supported
+GNU/Linux or Windows GNU toolchain.
 
 Owned paths:
 
@@ -204,9 +204,8 @@ Goal:
 - Port Python `transient_mpfr_utils.py` methods (`polylong`, `sobhy`,
   `khatwani`, `boor_golub`) without mislabeling Lanczos or f64 scaffolding as
   MPFR-equivalent output.
-- Continue by reconciling Boor-Golub's raw Python-shaped output with Rust's
-  `CauerNetwork` contract and adding stronger parity coverage on a toolchain
-  supported by `gmp-mpfr-sys`.
+- Continue by adding stronger MPFR parity coverage on a toolchain supported by
+  `gmp-mpfr-sys`.
 
 ## Landing Rules
 
