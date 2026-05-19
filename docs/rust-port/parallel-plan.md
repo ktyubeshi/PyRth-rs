@@ -157,7 +157,8 @@ Goal:
 Status: deterministic bootstrap from theoretical RC models and existing
 impedance inputs is implemented in core, including mean and 10/50/90 percentile
 bands.  The PyO3 bootstrap facade also accepts Python-style theoretical aliases
-and signal-to-noise input.
+and signal-to-noise input, and can run seeded bootstrap from existing
+impedance `data`.
 
 Owned paths:
 

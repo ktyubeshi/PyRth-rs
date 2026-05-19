@@ -121,6 +121,9 @@ implementation remains the reference implementation.
   - `Evaluation().bootstrap({...})` accepts Python-style theoretical aliases
     (`theo_resistances`, `theo_capacitances`, `theo_time`,
     `theo_time_size`) plus `signal_to_noise_ratio` and `random_seed`
+  - `Evaluation().bootstrap({...})` also accepts existing impedance `data`
+    for deterministic seeded bootstrap runs through the core evaluation
+    pipeline
   - `Evaluation().comparison(reference, candidate)` for two PyO3 result dicts
     or two standard-evaluation parameter dicts; it also accepts
     `Evaluation().comparison({"reference": ..., "candidate": ...})` as a thin
@@ -210,12 +213,10 @@ Lanczos Cauer coverage currently checks:
 - Bootstrap and comparison currently cover core numerical helpers and thin
   `Evaluation` dict facades.  Core bootstrap can now run from theoretical RC
   models or from existing impedance inputs with deterministic seeded noise.
-  PyO3 also has standard-only
+  The PyO3 bootstrap facade covers both theoretical aliases and existing
+  impedance `data`.  PyO3 also has standard-only
   `comparison_module` sweep support, but it does not yet port Python's
-  bootstrap comparison modes, optimization comparison modes, or from-data
-  bootstrap orchestration at the PyO3 facade level.  The theoretical bootstrap
-  facade accepts the Python-style theoretical aliases and emits percentile
-  bands.
+  bootstrap comparison modes or optimization comparison modes.
 - Temperature prediction core and PyO3 helpers now support explicit impulse
   responses, Foster RC parameters, and optimization-result dictionaries, but
   the PyO3 `temperature_prediction` facade still does not run a full
