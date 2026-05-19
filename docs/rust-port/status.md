@@ -23,8 +23,12 @@ implementation remains the reference implementation.
   - Bayesian deconvolution
   - Fourier deconvolution with `hann`, `rectangular`, `gauss`, `fermi`,
     `nuttall`, `blackman_nuttall`, and `blackman_harris` filters
+  - Lasso deconvolution with deterministic non-negative coordinate descent
   - Foster network conversion
   - Lanczos Cauer conversion
+- Theoretical helpers:
+  - Foster RC arrays to theoretical impedance input
+  - standard temperature prediction by interpolating power and impulse response
 - T3Ster text helpers:
   - legacy `.raw` header/data parser
   - `.pwr` power-step parser
@@ -90,6 +94,9 @@ Strict golden comparisons currently cover:
 - derivative preprocessing for MOSFET TIM and MOSFET dry
 - Bayesian `time_spec` for MOSFET TIM and MOSFET dry
 - Foster network resistance/capacitance for MOSFET TIM and MOSFET dry
+- Lasso smoke coverage for finite, non-negative sparse spectrum
+- theoretical single/multiple RC impedance generation
+- standard temperature prediction finite output
 
 Lanczos Cauer coverage currently checks:
 
@@ -108,10 +115,12 @@ Lanczos Cauer coverage currently checks:
   selection in a few positions.
 - PyO3 returns plain Python dictionaries rather than existing Python
   `StructureFunction` objects.
-- Lasso and adaptive deconvolution now return explicit unsupported errors
-  instead of falling back to Bayesian.
-- Lasso, adaptive, MPFR structure methods, optimization, bootstrap, comparison,
-  and temperature prediction are not ported.
+- Adaptive deconvolution now returns an explicit unsupported error instead of
+  falling back to Bayesian.
+- Adaptive, MPFR structure methods, optimization, bootstrap, and comparison are
+  not ported.
+- Temperature prediction currently supports standard-evaluation impulse
+  responses only; optimization-based prediction is not ported.
 - The next implementation work is split into non-overlapping `jj` slices in
   `docs/rust-port/parallel-plan.md`.
 
@@ -133,4 +142,6 @@ cargo run -p pyrth-cli -- --input tests\data\t3ster\T25_I-m5m-I-h600m_100s.raw -
 uvx maturin develop --manifest-path crates/pyrth-py/Cargo.toml
 .\.venv\Scripts\python.exe crates\pyrth-py\tests\smoke.py
 cargo test -p pyrth-py
+cargo test -p pyrth-core --test theoretical
+cargo test -p pyrth-core --test prediction
 ```

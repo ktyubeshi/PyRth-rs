@@ -92,6 +92,41 @@ Goal:
 - Keep file I/O at the CLI/PyO3 boundary and keep core parser functions
   testable from strings.
 
+### E. Lasso Deconvolution
+
+Status: implemented in core with deterministic non-negative coordinate descent.
+
+Owned paths:
+
+- `crates/pyrth-core/src/config.rs`
+- `crates/pyrth-core/src/deconvolution.rs`
+- `crates/pyrth-core/src/evaluation.rs`
+- `crates/pyrth-core/tests/golden.rs`
+
+Goal:
+
+- Provide a deterministic sparse deconvolution path without pulling in a
+  scikit-learn equivalent.
+- Keep adaptive mode explicitly unsupported until a separate implementation is
+  available.
+
+### F. Theoretical And Prediction
+
+Status: theoretical RC impedance generation and standard temperature prediction
+are implemented in core.
+
+Owned paths:
+
+- `crates/pyrth-core/src/theoretical.rs`
+- `crates/pyrth-core/src/prediction.rs`
+- `crates/pyrth-core/tests/theoretical.rs`
+- `crates/pyrth-core/tests/prediction.rs`
+
+Goal:
+
+- Build the foundation for comparison, bootstrap-from-theoretical, and
+  temperature prediction workflows.
+
 ## Landing Rules
 
 - Do not edit another slice's owned paths unless explicitly coordinating.
