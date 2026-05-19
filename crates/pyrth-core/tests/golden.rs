@@ -368,6 +368,18 @@ fn adaptive_deconvolution_returns_time_spectrum() {
         time_spectrum.iter().any(|value| *value > 1e-12),
         "Adaptive time spectrum is all zeros"
     );
+    let mut lasso_params = params.clone();
+    lasso_params.deconv_mode = DeconvMode::Lasso;
+    let lasso_fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
+    let (_, lasso_result) = evaluate_fixture_with_params(lasso_fixture, lasso_params);
+    let lasso_spectrum = lasso_result.time_spectrum.as_ref().unwrap();
+    assert!(
+        time_spectrum
+            .iter()
+            .zip(lasso_spectrum)
+            .any(|(adaptive, lasso)| (adaptive - lasso).abs() > 1e-12),
+        "Adaptive weighting produced the same spectrum as plain Lasso"
+    );
     assert!(result.foster.is_some());
     assert!(result.cauer.is_none());
 }
