@@ -33,9 +33,14 @@ impl Evaluation {
         let bay_steps = extract_usize(parameters, "bay_steps")?;
         let blockwise_sum_width = extract_usize(parameters, "blockwise_sum_width")?;
         let power_step = extract_f64(parameters, "power_step")?;
+        let power_scale_factor = extract_f64(parameters, "power_scale_factor")?;
+        let optical_power = extract_f64(parameters, "optical_power")?;
         let is_heating = extract_bool(parameters, "is_heating")?.unwrap_or(false);
         let kfac_fit_deg = extract_usize(parameters, "kfac_fit_deg")?;
         let calibration = extract_calibration(parameters)?;
+        let data_cut_lower = extract_usize(parameters, "data_cut_lower")?;
+        let data_cut_upper = extract_usize(parameters, "data_cut_upper")?;
+        let temp_0_avg_range = extract_usize_pair(parameters, "temp_0_avg_range")?;
 
         evaluate_impedance_with_params(
             py,
@@ -48,9 +53,14 @@ impl Evaluation {
                 bay_steps,
                 blockwise_sum_width,
                 power_step,
+                power_scale_factor,
+                optical_power,
                 is_heating,
                 kfac_fit_deg,
                 calibration,
+                data_cut_lower,
+                data_cut_upper,
+                temp_0_avg_range,
             },
         )
     }
@@ -75,9 +85,14 @@ fn evaluate_impedance(
             bay_steps: None,
             blockwise_sum_width: None,
             power_step: None,
+            power_scale_factor: None,
+            optical_power: None,
             is_heating: false,
             kfac_fit_deg: None,
             calibration: None,
+            data_cut_lower: None,
+            data_cut_upper: None,
+            temp_0_avg_range: None,
         },
     )
 }
@@ -90,9 +105,14 @@ struct EvalOverrides {
     bay_steps: Option<usize>,
     blockwise_sum_width: Option<usize>,
     power_step: Option<f64>,
+    power_scale_factor: Option<f64>,
+    optical_power: Option<f64>,
     is_heating: bool,
     kfac_fit_deg: Option<usize>,
     calibration: Option<Vec<[f64; 2]>>,
+    data_cut_lower: Option<usize>,
+    data_cut_upper: Option<usize>,
+    temp_0_avg_range: Option<(usize, usize)>,
 }
 
 fn evaluate_impedance_with_params(
@@ -122,12 +142,27 @@ fn evaluate_impedance_with_params(
     if let Some(power_step) = overrides.power_step {
         params.power_step = power_step;
     }
+    if let Some(power_scale_factor) = overrides.power_scale_factor {
+        params.power_scale_factor = power_scale_factor;
+    }
+    if let Some(optical_power) = overrides.optical_power {
+        params.optical_power = optical_power;
+    }
     params.is_heating = overrides.is_heating;
     if let Some(kfac_fit_deg) = overrides.kfac_fit_deg {
         params.kfac_fit_deg = kfac_fit_deg;
     }
     if let Some(calibration) = overrides.calibration {
         params.calibration = Some(calibration);
+    }
+    if let Some(data_cut_lower) = overrides.data_cut_lower {
+        params.data_cut_lower = data_cut_lower;
+    }
+    if let Some(data_cut_upper) = overrides.data_cut_upper {
+        params.data_cut_upper = Some(data_cut_upper);
+    }
+    if let Some(temp_0_avg_range) = overrides.temp_0_avg_range {
+        params.temp_0_avg_range = temp_0_avg_range;
     }
 
     let result = pyrth_core::evaluate(input, &params)
@@ -238,4 +273,15 @@ fn extract_calibration(parameters: &Bound<'_, PyDict>) -> PyResult<Option<Vec<[f
                 "calibration must be a sequence of (temperature, voltage) pairs: {err}"
             ))
         })
+}
+
+fn extract_usize_pair(
+    parameters: &Bound<'_, PyDict>,
+    key: &str,
+) -> PyResult<Option<(usize, usize)>> {
+    parameters
+        .get_item(key)?
+        .map(|value| value.extract::<(usize, usize)>())
+        .transpose()
+        .map_err(|err| PyValueError::new_err(format!("{key} must be a pair of integers: {err}")))
 }

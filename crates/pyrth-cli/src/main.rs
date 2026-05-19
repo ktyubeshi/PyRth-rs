@@ -41,12 +41,27 @@ fn run() -> Result<(), Box<dyn Error>> {
     if let Some(power_step) = args.power_step {
         params.power_step = power_step;
     }
+    if let Some(power_scale_factor) = args.power_scale_factor {
+        params.power_scale_factor = power_scale_factor;
+    }
+    if let Some(optical_power) = args.optical_power {
+        params.optical_power = optical_power;
+    }
     params.is_heating = args.is_heating;
     if let Some(kfac_fit_deg) = args.kfac_fit_deg {
         params.kfac_fit_deg = kfac_fit_deg;
     }
     if let Some(calibration_path) = args.calibration.as_ref() {
         params.calibration = Some(read_calibration_data(calibration_path)?);
+    }
+    if let Some(data_cut_lower) = args.data_cut_lower {
+        params.data_cut_lower = data_cut_lower;
+    }
+    if let Some(data_cut_upper) = args.data_cut_upper {
+        params.data_cut_upper = Some(data_cut_upper);
+    }
+    if let Some(temp_0_avg_range) = args.temp_0_avg_range {
+        params.temp_0_avg_range = temp_0_avg_range;
     }
 
     let result = evaluate(input, &params)?;
@@ -67,9 +82,14 @@ struct CliArgs {
     min_index: Option<usize>,
     minimum_window_size: Option<usize>,
     power_step: Option<f64>,
+    power_scale_factor: Option<f64>,
+    optical_power: Option<f64>,
     is_heating: bool,
     kfac_fit_deg: Option<usize>,
     calibration: Option<PathBuf>,
+    data_cut_lower: Option<usize>,
+    data_cut_upper: Option<usize>,
+    temp_0_avg_range: Option<(usize, usize)>,
 }
 
 impl CliArgs {
@@ -85,9 +105,14 @@ impl CliArgs {
         let mut min_index = None;
         let mut minimum_window_size = None;
         let mut power_step = None;
+        let mut power_scale_factor = None;
+        let mut optical_power = None;
         let mut is_heating = false;
         let mut kfac_fit_deg = None;
         let mut calibration = None;
+        let mut data_cut_lower = None;
+        let mut data_cut_upper = None;
+        let mut temp_0_avg_range = None;
 
         let mut args = args.peekable();
         while let Some(arg) = args.next() {
@@ -118,11 +143,26 @@ impl CliArgs {
                     input_mode = InputMode::from_label(&value)?;
                 }
                 "--power-step" => power_step = Some(parse_next_f64(&mut args, "--power-step")?),
+                "--power-scale-factor" => {
+                    power_scale_factor = Some(parse_next_f64(&mut args, "--power-scale-factor")?)
+                }
+                "--optical-power" => {
+                    optical_power = Some(parse_next_f64(&mut args, "--optical-power")?)
+                }
                 "--is-heating" => is_heating = true,
                 "--kfac-fit-deg" => {
                     kfac_fit_deg = Some(parse_next_usize(&mut args, "--kfac-fit-deg")?)
                 }
                 "--calibration" => calibration = args.next().map(PathBuf::from),
+                "--data-cut-lower" => {
+                    data_cut_lower = Some(parse_next_usize(&mut args, "--data-cut-lower")?)
+                }
+                "--data-cut-upper" => {
+                    data_cut_upper = Some(parse_next_usize(&mut args, "--data-cut-upper")?)
+                }
+                "--temp-zero-range" => {
+                    temp_0_avg_range = Some(parse_next_range(&mut args, "--temp-zero-range")?)
+                }
                 _ if input.is_none() => input = Some(PathBuf::from(arg)),
                 _ if output_dir.is_none() => output_dir = Some(PathBuf::from(arg)),
                 _ => return Err(format!("unknown argument: {arg}").into()),
@@ -141,16 +181,21 @@ impl CliArgs {
             min_index,
             minimum_window_size,
             power_step,
+            power_scale_factor,
+            optical_power,
             is_heating,
             kfac_fit_deg,
             calibration,
+            data_cut_lower,
+            data_cut_upper,
+            temp_0_avg_range,
         })
     }
 }
 
 fn print_usage() {
     println!(
-        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt] [--power-step <w>] [--is-heating] [--calibration <path>] [--kfac-fit-deg <n>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
+        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt] [--power-step <w>] [--power-scale-factor <x>] [--optical-power <w>] [--is-heating] [--calibration <path>] [--kfac-fit-deg <n>] [--data-cut-lower <n>] [--data-cut-upper <n>] [--temp-zero-range <start:end>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
     );
 }
 
@@ -176,6 +221,19 @@ fn parse_next_f64(
     value
         .parse::<f64>()
         .map_err(|err| format!("invalid value for {flag}: {value} ({err})").into())
+}
+
+fn parse_next_range(
+    args: &mut std::iter::Peekable<impl Iterator<Item = String>>,
+    flag: &str,
+) -> Result<(usize, usize), Box<dyn Error>> {
+    let value = args
+        .next()
+        .ok_or_else(|| format!("missing value for {flag}"))?;
+    let (start, end) = value
+        .split_once(':')
+        .ok_or_else(|| format!("invalid value for {flag}: expected start:end"))?;
+    Ok((start.parse::<usize>()?, end.parse::<usize>()?))
 }
 
 fn read_two_column_data(path: &Path) -> Result<TransientInput, Box<dyn Error>> {

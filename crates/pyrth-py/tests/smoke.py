@@ -46,6 +46,7 @@ def main() -> None:
             "input_mode": "temp",
             "only_make_z": True,
             "power_step": 2.0,
+            "temp_0_avg_range": (0, 1),
         }
     )
     assert temp_module["impedance"] == [0.0, 0.5, 1.0]
