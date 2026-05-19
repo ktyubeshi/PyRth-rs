@@ -122,13 +122,17 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
                 &foster.capacitance,
                 params.precision,
             )?),
+            #[cfg(feature = "mpfr")]
+            StructureMethod::BoorGolub => Some(crate::network::cauer_from_foster_boor_golub_mpfr(
+                &foster.resistance,
+                &foster.capacitance,
+                params.precision,
+            )?),
             #[cfg(not(feature = "mpfr"))]
-            StructureMethod::PolyLong | StructureMethod::Sobhy | StructureMethod::Khatwani => {
-                return Err(PyrthError::UnsupportedStructureMethod(
-                    params.structure_method.to_string(),
-                ));
-            }
-            StructureMethod::BoorGolub => {
+            StructureMethod::PolyLong
+            | StructureMethod::Sobhy
+            | StructureMethod::Khatwani
+            | StructureMethod::BoorGolub => {
                 return Err(PyrthError::UnsupportedStructureMethod(
                     params.structure_method.to_string(),
                 ));

@@ -117,6 +117,25 @@ pub fn boor_golub_cauer_mpfr_raw(
     boor_golub_raw_mpfr(&foster_resistance, &foster_capacitance, precision)
 }
 
+#[cfg(feature = "mpfr")]
+pub fn cauer_from_foster_boor_golub_mpfr(
+    foster_resistance: &Array1<f64>,
+    foster_capacitance: &Array1<f64>,
+    precision: usize,
+) -> Result<CauerNetwork> {
+    let (mut resistance, mut capacitance) =
+        boor_golub_cauer_mpfr_raw(foster_resistance, foster_capacitance, precision)?;
+
+    // Python's raw Boor-Golub sequence can end with a zero resistance sentinel.
+    // Rust's CauerNetwork stores only physical, positive RC sections.
+    while matches!(resistance.last(), Some(value) if value.is_finite() && *value <= 0.0) {
+        resistance.pop();
+        capacitance.pop();
+    }
+
+    cauer_network_from_elements(resistance, capacitance)
+}
+
 pub(crate) fn poly_long_division_to_cauer_f64(
     numerator: &[f64],
     denominator: &[f64],

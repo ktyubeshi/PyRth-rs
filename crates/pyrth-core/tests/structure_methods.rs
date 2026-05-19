@@ -2,7 +2,8 @@ use approx::assert_relative_eq;
 use ndarray::array;
 #[cfg(all(feature = "mpfr", not(target_env = "msvc")))]
 use pyrth_core::network::{
-    boor_golub_cauer_mpfr_raw, cauer_from_foster_khatwani_mpfr, cauer_from_foster_poly_long_mpfr,
+    boor_golub_cauer_mpfr_raw, cauer_from_foster_boor_golub_mpfr,
+    cauer_from_foster_khatwani_mpfr, cauer_from_foster_poly_long_mpfr,
     cauer_from_foster_sobhy_mpfr,
 };
 use pyrth_core::{
@@ -141,6 +142,24 @@ fn boor_golub_mpfr_raw_preserves_python_shape_for_two_branches() {
         .all(|value| value.is_finite() && *value > 0.0));
 }
 
+#[cfg(all(feature = "mpfr", not(target_env = "msvc")))]
+#[test]
+fn boor_golub_mpfr_cauer_drops_python_trailing_zero_resistance() {
+    let resistance = array![2.0, 3.0];
+    let capacitance = array![5.0, 7.0];
+
+    let cauer = cauer_from_foster_boor_golub_mpfr(&resistance, &capacitance, 250).unwrap();
+
+    assert_eq!(cauer.resistance.len(), 1);
+    assert_eq!(cauer.capacitance.len(), 1);
+    assert!(cauer.resistance[0].is_finite() && cauer.resistance[0] > 0.0);
+    assert!(cauer.capacitance[0].is_finite() && cauer.capacitance[0] > 0.0);
+    assert_relative_eq!(cauer.cumulative_resistance[0], cauer.resistance[0]);
+    assert_relative_eq!(cauer.cumulative_capacitance[0], cauer.capacitance[0]);
+    assert!(cauer.differential_structure.is_empty());
+}
+
+#[cfg(not(feature = "mpfr"))]
 #[test]
 fn boor_golub_stays_explicitly_unsupported_in_evaluate() {
     let input = TransientInput::from_pairs([(1e-6, 0.0), (1e-5, 0.1), (1e-4, 0.2)]).unwrap();

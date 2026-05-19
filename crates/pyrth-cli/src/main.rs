@@ -7,9 +7,10 @@ use std::{
 };
 
 use pyrth_core::{
-    evaluate, export_csv, parse_t3ster_calibration_text, parse_t3ster_power_step,
-    parse_t3ster_raw_text, t3ster_raw_to_temperature_input, theoretical_impedance_input,
-    DeconvMode, EvaluationParams, FourierFilter, InputMode, StructureMethod, TransientInput,
+    evaluate, export_csv, export_svg_figures, parse_t3ster_calibration_text,
+    parse_t3ster_power_step, parse_t3ster_raw_text, t3ster_raw_to_temperature_input,
+    theoretical_impedance_input, DeconvMode, EvaluationParams, FourierFilter, InputMode,
+    StructureMethod, TransientInput,
 };
 
 fn main() {
@@ -106,6 +107,9 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let result = evaluate(input, &params)?;
     export_csv(&result, &args.output_dir)?;
+    if let Some(figures_output_dir) = args.figures_output_dir.as_ref() {
+        export_svg_figures(&result, figures_output_dir)?;
+    }
 
     Ok(())
 }
@@ -113,6 +117,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 struct CliArgs {
     input: Option<PathBuf>,
     output_dir: PathBuf,
+    figures_output_dir: Option<PathBuf>,
     input_mode: InputMode,
     deconv_mode: DeconvMode,
     structure_method: StructureMethod,
@@ -156,6 +161,7 @@ impl CliArgs {
     fn parse(args: impl Iterator<Item = String>) -> Result<Self, Box<dyn Error>> {
         let mut input = None;
         let mut output_dir = None;
+        let mut figures_output_dir = None;
         let mut input_mode = InputMode::Impedance;
         let mut deconv_mode = DeconvMode::Bayesian;
         let mut structure_method = StructureMethod::Lanczos;
@@ -203,6 +209,7 @@ impl CliArgs {
                 }
                 "--input" | "-i" => input = args.next().map(PathBuf::from),
                 "--output" | "-o" => output_dir = args.next().map(PathBuf::from),
+                "--figures-output" => figures_output_dir = args.next().map(PathBuf::from),
                 "--only-make-z" => only_make_z = true,
                 "--no-structure" => no_structure = true,
                 "--log-time-size" => {
@@ -312,6 +319,7 @@ impl CliArgs {
         Ok(Self {
             input,
             output_dir: output_dir.unwrap_or_else(|| PathBuf::from("output/rust-cli")),
+            figures_output_dir,
             input_mode,
             deconv_mode,
             structure_method,
@@ -359,7 +367,7 @@ impl CliArgs {
 
 fn print_usage() {
     println!(
-        "Usage: pyrth-cli [--input <path>] --output <dir> [--theoretical-resistance <r1,r2>] [--theoretical-capacitance <c1,c2>] [--time-start <t>] [--time-end <t>] [--time-size <n>] [--input-mode impedance|temp|volt|t3ster] [--deconv bayesian|fourier|lasso|adaptive] [--structure-method lanczos|sobhy|boor_golub|khatwani|polylong] [--precision <bits>] [--filter-name hann|rectangular|gauss|fermi|nuttall|blackman_nuttall|blackman_harris] [--filter-range <x>] [--filter-parameter <x>] [--power-step <w>] [--power-scale-factor <x>] [--optical-power <w>] [--is-heating] [--calibration <path>] [--t3ster-power <path>] [--t3ster-calibration <path>] [--kfac-fit-deg <n>] [--data-cut-lower <n>] [--data-cut-upper <n>] [--temp-zero-range <start:end>] [--extrapolate --lower-fit-limit <t> --upper-fit-limit <t>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>] [--lasso-alpha <x>] [--lasso-max-iter <n>] [--lasso-tol <x>] [--timespec-interpolate-factor <x>]"
+        "Usage: pyrth-cli [--input <path>] --output <dir> [--figures-output <dir>] [--theoretical-resistance <r1,r2>] [--theoretical-capacitance <c1,c2>] [--time-start <t>] [--time-end <t>] [--time-size <n>] [--input-mode impedance|temp|volt|t3ster] [--deconv bayesian|fourier|lasso|adaptive] [--structure-method lanczos|sobhy|boor_golub|khatwani|polylong] [--precision <bits>] [--filter-name hann|rectangular|gauss|fermi|nuttall|blackman_nuttall|blackman_harris] [--filter-range <x>] [--filter-parameter <x>] [--power-step <w>] [--power-scale-factor <x>] [--optical-power <w>] [--is-heating] [--calibration <path>] [--t3ster-power <path>] [--t3ster-calibration <path>] [--kfac-fit-deg <n>] [--data-cut-lower <n>] [--data-cut-upper <n>] [--temp-zero-range <start:end>] [--extrapolate --lower-fit-limit <t> --upper-fit-limit <t>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>] [--lasso-alpha <x>] [--lasso-max-iter <n>] [--lasso-tol <x>] [--timespec-interpolate-factor <x>]"
     );
 }
 
