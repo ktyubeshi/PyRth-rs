@@ -217,6 +217,34 @@ def main() -> None:
     assert len(predicted_facade["time"]) > 0
     assert all(math.isfinite(value) for value in predicted_facade["temperature"])
 
+    predicted_from_rc = evaluation.temperature_prediction(
+        {
+            "resistance": [1.0],
+            "capacitance": [0.5],
+            "reference_time": prediction_input["time"],
+            "power_data": [(0.0, 0.0), (0.02, 1.0), (0.04, 0.5)],
+            "lin_sampling_period": 1e-3,
+        }
+    )
+    assert sorted(predicted_from_rc) == ["temperature", "time"]
+    assert len(predicted_from_rc["time"]) == len(predicted_from_rc["temperature"])
+    assert len(predicted_from_rc["time"]) > 0
+    assert all(math.isfinite(value) for value in predicted_from_rc["temperature"])
+
+    predicted_from_optimization = pyrth_py.predict_temperature_response(
+        {
+            "optimization_result": {"resistance": [1.0], "capacitance": [0.5]},
+            "reference_time": prediction_input["time"],
+            "power_data": [(0.0, 0.0), (0.02, 1.0), (0.04, 0.5)],
+            "lin_sampling_period": 1e-3,
+        }
+    )
+    assert sorted(predicted_from_optimization) == ["temperature", "time"]
+    assert_close_list(predicted_from_optimization["time"], predicted_from_rc["time"])
+    assert_close_list(
+        predicted_from_optimization["temperature"], predicted_from_rc["temperature"]
+    )
+
     comparison = evaluation.comparison(lasso_module, lasso_module)
     assert sorted(comparison) == [
         "structure_norm",

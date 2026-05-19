@@ -2,7 +2,11 @@
 
 use std::{fs, path::Path, sync::RwLock};
 
-use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
+use pyo3::{
+    exceptions::PyValueError,
+    prelude::*,
+    types::{PyAny, PyDict},
+};
 pub use pyrth_core::*;
 
 #[pyclass]
@@ -102,11 +106,7 @@ impl Evaluation {
         py: Python<'_>,
         parameters: &Bound<'_, PyDict>,
     ) -> PyResult<PyObject> {
-        let impulse_response = require_first_pairs(parameters, &["impulse_response", "data"])?;
-        let power_data = require_first_pairs(parameters, &["power_data", "power"])?;
-        let lin_sampling_period = extract_f64(parameters, "lin_sampling_period")?.unwrap_or(1.0);
-
-        predict_temperature_response(py, impulse_response, power_data, lin_sampling_period)
+        predict_temperature_response_from_parameters(py, parameters)
     }
 
     #[pyo3(signature = (reference, candidate=None))]
@@ -508,13 +508,23 @@ fn optimize_rc(
 }
 
 #[pyfunction]
-#[pyo3(signature = (impulse_response, power_data, lin_sampling_period=1.0))]
+#[pyo3(signature = (source, power_data=None, lin_sampling_period=1.0))]
 fn predict_temperature_response(
     py: Python<'_>,
-    impulse_response: Vec<(f64, f64)>,
-    power_data: Vec<(f64, f64)>,
+    source: &Bound<'_, PyAny>,
+    power_data: Option<Vec<(f64, f64)>>,
     lin_sampling_period: f64,
 ) -> PyResult<PyObject> {
+    if let Ok(parameters) = source.downcast::<PyDict>() {
+        return predict_temperature_response_from_parameters(py, parameters);
+    }
+
+    let impulse_response = source.extract::<Vec<(f64, f64)>>().map_err(|err| {
+        PyValueError::new_err(format!(
+            "impulse_response must be a sequence of pairs: {err}"
+        ))
+    })?;
+    let power_data = power_data.ok_or_else(|| PyValueError::new_err("power_data is required"))?;
     let input = pyrth_core::TransientInput::from_pairs(impulse_response)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
     let power = transient_input_from_pairs_unchecked(power_data);
@@ -524,9 +534,89 @@ fn predict_temperature_response(
     let result = pyrth_core::predict_temperature(input, power, &params, lin_sampling_period)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
+    temperature_prediction_to_dict(
+        py,
+        result.lin_time.to_vec(),
+        result.predicted_temperature.to_vec(),
+    )
+}
+
+fn predict_temperature_response_from_parameters(
+    py: Python<'_>,
+    parameters: &Bound<'_, PyDict>,
+) -> PyResult<PyObject> {
+    let power_data = require_first_pairs(parameters, &["power_data", "power"])?;
+    let lin_sampling_period = extract_f64(parameters, "lin_sampling_period")?.unwrap_or(1.0);
+
+    if let Some(impulse_response) = extract_first_pairs(parameters, &["impulse_response", "data"])?
+    {
+        let input = pyrth_core::TransientInput::from_pairs(impulse_response)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        let power = transient_input_from_pairs_unchecked(power_data);
+        let mut params = pyrth_core::EvaluationParams::default();
+        params.calc_struc = false;
+
+        let result = pyrth_core::predict_temperature(input, power, &params, lin_sampling_period)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+        return temperature_prediction_to_dict(
+            py,
+            result.lin_time.to_vec(),
+            result.predicted_temperature.to_vec(),
+        );
+    }
+
+    let reference_time = require_first_vec_f64(parameters, &["reference_time"])?;
+    let power = transient_input_from_pairs_unchecked(power_data);
+
+    let result = if let Some(optimization_result) = parameters.get_item("optimization_result")? {
+        let optimization_result = optimization_result.downcast::<PyDict>().map_err(|err| {
+            PyValueError::new_err(format!("optimization_result must be a dict: {err}"))
+        })?;
+        let resistance = require_first_vec_f64(optimization_result, &["resistance"])?;
+        let capacitance = require_first_vec_f64(optimization_result, &["capacitance"])?;
+        let rc_parameters = pyrth_core::RcParameters::from_slices(&resistance, &capacitance)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        let optimization = pyrth_core::OptimizationResult {
+            parameters: rc_parameters,
+            residual_norm: extract_f64(optimization_result, "residual_norm")?.unwrap_or(0.0),
+            iterations: extract_usize(optimization_result, "iterations")?.unwrap_or(0),
+        };
+        pyrth_core::predict_temperature_from_optimization_result(
+            &power,
+            &optimization,
+            &reference_time.into(),
+            lin_sampling_period,
+        )
+    } else {
+        let resistance = require_first_vec_f64(parameters, &["resistance"])?;
+        let capacitance = require_first_vec_f64(parameters, &["capacitance"])?;
+        let rc_parameters = pyrth_core::RcParameters::from_slices(&resistance, &capacitance)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        pyrth_core::predict_temperature_from_rc_parameters(
+            &power,
+            &rc_parameters,
+            &reference_time.into(),
+            lin_sampling_period,
+        )
+    }
+    .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    temperature_prediction_to_dict(
+        py,
+        result.lin_time.to_vec(),
+        result.predicted_temperature.to_vec(),
+    )
+}
+
+fn temperature_prediction_to_dict(
+    py: Python<'_>,
+    time: Vec<f64>,
+    temperature: Vec<f64>,
+) -> PyResult<PyObject> {
     let output = PyDict::new(py);
-    output.set_item("time", result.lin_time.to_vec())?;
-    output.set_item("temperature", result.predicted_temperature.to_vec())?;
+    output.set_item("time", time)?;
+    output.set_item("temperature", temperature)?;
     Ok(output.into())
 }
 
@@ -981,6 +1071,18 @@ fn extract_first_vec_f64(
     Ok(None)
 }
 
+fn extract_first_pairs(
+    parameters: &Bound<'_, PyDict>,
+    keys: &[&str],
+) -> PyResult<Option<Vec<(f64, f64)>>> {
+    for key in keys {
+        if let Some(value) = extract_pairs(parameters, key)? {
+            return Ok(Some(value));
+        }
+    }
+    Ok(None)
+}
+
 fn require_first_vec_f64(parameters: &Bound<'_, PyDict>, keys: &[&str]) -> PyResult<Vec<f64>> {
     extract_first_vec_f64(parameters, keys)?
         .ok_or_else(|| PyValueError::new_err(format!("{} is required", keys.join(" or "))))
@@ -1036,15 +1138,8 @@ fn require_pairs(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Vec<(f64
 }
 
 fn require_first_pairs(parameters: &Bound<'_, PyDict>, keys: &[&str]) -> PyResult<Vec<(f64, f64)>> {
-    for key in keys {
-        if let Some(value) = extract_pairs(parameters, key)? {
-            return Ok(value);
-        }
-    }
-    Err(PyValueError::new_err(format!(
-        "{} is required",
-        keys.join(" or ")
-    )))
+    extract_first_pairs(parameters, keys)?
+        .ok_or_else(|| PyValueError::new_err(format!("{} is required", keys.join(" or "))))
 }
 
 fn extract_calibration(parameters: &Bound<'_, PyDict>) -> PyResult<Option<Vec<[f64; 2]>>> {
