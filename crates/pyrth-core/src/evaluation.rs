@@ -3,6 +3,7 @@ use ndarray::Array1;
 use crate::{
     config::{EvaluationParams, InputMode},
     data::{ImpedanceData, TransientInput},
+    derivative::z_fit_deriv,
     error::{PyrthError, Result},
     preprocess::make_impedance_data,
 };
@@ -12,6 +13,7 @@ pub struct DerivativeResult {
     pub imp_smooth: Array1<f64>,
     pub imp_deriv_interp: Array1<f64>,
     pub log_time_interp: Array1<f64>,
+    pub imp_smooth_full: Array1<f64>,
     pub log_time_pad: Array1<f64>,
     pub log_time_delta: f64,
 }
@@ -48,9 +50,12 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
         ));
     }
 
+    let impedance = make_impedance_data(input)?;
+    let derivative = z_fit_deriv(&impedance.impedance, &impedance.log_time, params)?;
+
     Ok(EvaluationResult {
-        impedance: make_impedance_data(input)?,
-        derivative: None,
+        impedance,
+        derivative: Some(derivative),
         time_spectrum: None,
         foster: None,
         cauer: None,

@@ -6,12 +6,14 @@
 
 pub mod config;
 pub mod data;
+pub mod derivative;
 pub mod error;
 pub mod evaluation;
 pub mod preprocess;
 
 pub use config::{DeconvMode, EvaluationParams, InputMode, StructureMethod};
 pub use data::{ImpedanceData, TransientInput};
+pub use derivative::z_fit_deriv;
 pub use error::{PyrthError, Result};
 pub use evaluation::{evaluate, CauerNetwork, DerivativeResult, EvaluationResult, FosterNetwork};
 pub use preprocess::make_impedance_data;
