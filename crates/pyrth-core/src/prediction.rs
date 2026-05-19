@@ -4,12 +4,21 @@ use crate::{
     data::TransientInput,
     error::{PyrthError, Result},
     evaluation::{evaluate, EvaluationResult},
+    optimization::{OptimizationResult, RcParameters},
     EvaluationParams,
 };
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TemperaturePredictionResult {
     pub base: EvaluationResult,
+    pub lin_time: Array1<f64>,
+    pub predicted_temperature: Array1<f64>,
+    pub power_function_int: Array1<f64>,
+    pub impulse_response_int: Array1<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TemperaturePredictionCoreResult {
     pub lin_time: Array1<f64>,
     pub predicted_temperature: Array1<f64>,
     pub power_function_int: Array1<f64>,
@@ -46,6 +55,67 @@ pub fn predict_temperature(
         return Err(PyrthError::EmptySpectrum);
     }
 
+    let predicted = predict_temperature_from_impulse_response(
+        &power_data,
+        &reference_time,
+        &reference_impulse,
+        lin_sampling_period,
+    )?;
+
+    Ok(TemperaturePredictionResult {
+        base,
+        lin_time: predicted.lin_time,
+        predicted_temperature: predicted.predicted_temperature,
+        power_function_int: predicted.power_function_int,
+        impulse_response_int: predicted.impulse_response_int,
+    })
+}
+
+pub fn predict_temperature_from_rc_parameters(
+    power_data: &TransientInput,
+    parameters: &RcParameters,
+    reference_time: &Array1<f64>,
+    lin_sampling_period: f64,
+) -> Result<TemperaturePredictionCoreResult> {
+    let reference_impulse = foster_impulse_response_on(parameters, reference_time)?;
+    predict_temperature_from_impulse_response(
+        power_data,
+        reference_time,
+        &reference_impulse,
+        lin_sampling_period,
+    )
+}
+
+pub fn predict_temperature_from_optimization_result(
+    power_data: &TransientInput,
+    result: &OptimizationResult,
+    reference_time: &Array1<f64>,
+    lin_sampling_period: f64,
+) -> Result<TemperaturePredictionCoreResult> {
+    predict_temperature_from_rc_parameters(
+        power_data,
+        &result.parameters,
+        reference_time,
+        lin_sampling_period,
+    )
+}
+
+pub fn predict_temperature_from_impulse_response(
+    power_data: &TransientInput,
+    reference_time: &Array1<f64>,
+    reference_impulse: &Array1<f64>,
+    lin_sampling_period: f64,
+) -> Result<TemperaturePredictionCoreResult> {
+    if !lin_sampling_period.is_finite() || lin_sampling_period <= 0.0 {
+        return Err(PyrthError::InvalidParameter {
+            parameter: "lin_sampling_period",
+            expected: "finite and greater than zero",
+            actual: lin_sampling_period.to_string(),
+        });
+    }
+    validate_power_data(power_data)?;
+    validate_reference_impulse(reference_time, reference_impulse)?;
+
     let power_t_end = power_data.time[power_data.time.len() - 1];
     let reference_t_end = reference_time[reference_time.len() - 1];
     let t_min = -(power_t_end + reference_t_end);
@@ -66,13 +136,32 @@ pub fn predict_temperature(
     let predicted_full = convolve_same(&power_full, &impulse_full).mapv(|value| value * dt);
 
     let start = lin_count / 2 - 1;
-    Ok(TemperaturePredictionResult {
-        base,
+    Ok(TemperaturePredictionCoreResult {
         lin_time: slice_from(&lin_time_full, start),
         predicted_temperature: slice_from(&predicted_full, start),
         power_function_int: slice_from(&power_full, start),
         impulse_response_int: impulse_full,
     })
+}
+
+pub fn foster_impulse_response_on(
+    parameters: &RcParameters,
+    time: &Array1<f64>,
+) -> Result<Array1<f64>> {
+    parameters.validate()?;
+    validate_reference_time(time)?;
+
+    Ok(Array1::from_iter(time.iter().copied().map(|sample_time| {
+        parameters
+            .resistance
+            .iter()
+            .zip(parameters.capacitance.iter())
+            .map(|(resistance, capacitance)| {
+                let tau = resistance * capacitance;
+                resistance / tau * (-sample_time / tau).exp()
+            })
+            .sum()
+    })))
 }
 
 fn interpolate_left_zero(x: &Array1<f64>, xp: &Array1<f64>, fp: &Array1<f64>) -> Array1<f64> {
@@ -109,6 +198,43 @@ fn validate_power_data(power_data: &TransientInput) -> Result<()> {
     }
     if power_data
         .time
+        .windows(2)
+        .into_iter()
+        .any(|pair| pair[0] >= pair[1])
+    {
+        return Err(PyrthError::InvalidTimeAxis);
+    }
+    Ok(())
+}
+
+fn validate_reference_impulse(
+    reference_time: &Array1<f64>,
+    reference_impulse: &Array1<f64>,
+) -> Result<()> {
+    validate_reference_time(reference_time)?;
+    if reference_time.len() != reference_impulse.len() {
+        return Err(PyrthError::LengthMismatch {
+            time_len: reference_time.len(),
+            value_len: reference_impulse.len(),
+        });
+    }
+    if !reference_impulse.iter().all(|value| value.is_finite()) {
+        return Err(PyrthError::InvalidValues);
+    }
+    Ok(())
+}
+
+fn validate_reference_time(reference_time: &Array1<f64>) -> Result<()> {
+    if reference_time.is_empty() {
+        return Err(PyrthError::EmptySpectrum);
+    }
+    if !reference_time
+        .iter()
+        .all(|time| time.is_finite() && *time >= 0.0)
+    {
+        return Err(PyrthError::InvalidTimeAxis);
+    }
+    if reference_time
         .windows(2)
         .into_iter()
         .any(|pair| pair[0] >= pair[1])

@@ -36,7 +36,11 @@ pub use optimization::{
     impedance_residual_norm, optimize_rc_parameters, relative_l2_norm, OptimizationConfig,
     OptimizationResult, RcParameterBounds, RcParameters,
 };
-pub use prediction::{predict_temperature, TemperaturePredictionResult};
+pub use prediction::{
+    foster_impulse_response_on, predict_temperature, predict_temperature_from_impulse_response,
+    predict_temperature_from_optimization_result, predict_temperature_from_rc_parameters,
+    TemperaturePredictionCoreResult, TemperaturePredictionResult,
+};
 pub use preprocess::make_impedance_data;
 pub use t3ster::{
     parse_t3ster_calibration_text, parse_t3ster_power_step, parse_t3ster_raw_text,
