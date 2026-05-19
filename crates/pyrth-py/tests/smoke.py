@@ -273,6 +273,23 @@ def main() -> None:
     assert len(bootstrap_python_aliases["impedance_median"]) == 80
     assert len(bootstrap_python_aliases["time_spectrum_median"]) > 0
 
+    bootstrap_from_data = evaluation.bootstrap(
+        {
+            "data": list(zip(theoretical["time"], theoretical["impedance"])),
+            "repetitions": 2,
+            "noise_std": 0.0,
+            "random_seed": 7,
+            "deconv_mode": "fourier",
+            "log_time_size": 8,
+            "min_index": 1,
+            "minimum_window_size": 2,
+            "calc_struc": False,
+        }
+    )
+    assert bootstrap_from_data["successful_repetitions"] == 2
+    assert len(bootstrap_from_data["impedance_median"]) == len(theoretical["time"])
+    assert len(bootstrap_from_data["time_spectrum_median"]) == 8
+
     target = pyrth_py.theoretical_impedance([1.0, 3.0], [0.4, 2.0], 1e-3, 1e2, 32)
     optimized = pyrth_py.optimize_rc(
         list(zip(target["time"], target["impedance"])),

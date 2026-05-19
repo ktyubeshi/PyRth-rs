@@ -165,6 +165,26 @@ impl Evaluation {
     }
 
     fn bootstrap(&self, py: Python<'_>, parameters: &Bound<'_, PyDict>) -> PyResult<PyObject> {
+        if let Some(data) = extract_pairs(parameters, "data")? {
+            let input = pyrth_core::TransientInput::from_pairs(data)
+                .map_err(|err| PyValueError::new_err(err.to_string()))?;
+            let repetitions = require_first_usize(parameters, &["repetitions"])?;
+            let noise_std = bootstrap_noise_std_from_data(parameters, &input)?;
+            let seed = extract_u64(parameters, "seed")?
+                .or(extract_u64(parameters, "random_seed")?)
+                .unwrap_or(0);
+            let params = bootstrap_evaluation_params_from_parameters(parameters)?;
+            let result = pyrth_core::bootstrap_from_impedance_data(
+                &input,
+                repetitions,
+                noise_std,
+                &params,
+                seed,
+            )
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+            return bootstrap_result_to_dict(py, result);
+        }
+
         let resistance = require_first_vec_f64(
             parameters,
             &["resistance", "theoretical_resistance", "theo_resistances"],
@@ -789,6 +809,63 @@ fn bootstrap_noise_std(
     Ok(last_impedance / signal_to_noise_ratio)
 }
 
+fn bootstrap_noise_std_from_data(
+    parameters: &Bound<'_, PyDict>,
+    input: &pyrth_core::TransientInput,
+) -> PyResult<f64> {
+    if let Some(noise_std) = extract_f64(parameters, "noise_std")? {
+        return Ok(noise_std);
+    }
+    let signal_to_noise_ratio = require_first_f64(parameters, &["signal_to_noise_ratio"])?;
+    if !signal_to_noise_ratio.is_finite() || signal_to_noise_ratio <= 0.0 {
+        return Err(PyValueError::new_err(
+            "signal_to_noise_ratio must be finite and greater than zero",
+        ));
+    }
+    let last_impedance = input
+        .value
+        .last()
+        .copied()
+        .ok_or_else(|| PyValueError::new_err("bootstrap data is empty"))?;
+    Ok(last_impedance / signal_to_noise_ratio)
+}
+
+fn bootstrap_evaluation_params_from_parameters(
+    parameters: &Bound<'_, PyDict>,
+) -> PyResult<pyrth_core::EvaluationParams> {
+    let mut params = pyrth_core::EvaluationParams::default();
+    params.calc_struc = extract_bool(parameters, "calc_struc")?.unwrap_or(false);
+    if let Some(deconv_mode) =
+        extract_string(parameters, "deconv_mode")?.or(extract_string(parameters, "deconv")?)
+    {
+        params.deconv_mode = pyrth_core::DeconvMode::from_label(&deconv_mode)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    }
+    if let Some(log_time_size) = extract_usize(parameters, "log_time_size")? {
+        params.log_time_size = log_time_size;
+    }
+    if let Some(min_index) = extract_usize(parameters, "min_index")? {
+        params.min_index = min_index;
+    }
+    if let Some(minimum_window_size) = extract_usize(parameters, "minimum_window_size")? {
+        params.minimum_window_size = minimum_window_size;
+    }
+    if let Some(bay_steps) = extract_usize(parameters, "bay_steps")? {
+        params.bay_steps = bay_steps;
+    }
+    if let Some(filter_name) = extract_string(parameters, "filter_name")? {
+        params.filter_name = pyrth_core::FourierFilter::from_label(&filter_name)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    }
+    if let Some(filter_range) = extract_f64(parameters, "filter_range")? {
+        params.filter_range = filter_range;
+    }
+    if let Some(filter_parameter) = extract_f64(parameters, "filter_parameter")? {
+        params.filter_parameter = filter_parameter;
+    }
+    Ok(params)
+}
+
 fn transient_input_to_pairs(input: &pyrth_core::TransientInput) -> Vec<(f64, f64)> {
     input
         .time
@@ -900,17 +977,7 @@ fn bootstrap_theoretical(
     )
     .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
-    let output = PyDict::new(py);
-    output.set_item("impedance_mean", result.impedance_mean.to_vec())?;
-    output.set_item("impedance_p10", result.impedance_p10.to_vec())?;
-    output.set_item("impedance_median", result.impedance_median.to_vec())?;
-    output.set_item("impedance_p90", result.impedance_p90.to_vec())?;
-    output.set_item("time_spectrum_mean", result.time_spectrum_mean.to_vec())?;
-    output.set_item("time_spectrum_p10", result.time_spectrum_p10.to_vec())?;
-    output.set_item("time_spectrum_median", result.time_spectrum_median.to_vec())?;
-    output.set_item("time_spectrum_p90", result.time_spectrum_p90.to_vec())?;
-    output.set_item("successful_repetitions", result.successful_repetitions)?;
-    Ok(output.into())
+    bootstrap_result_to_dict(py, result)
 }
 
 #[pyfunction]
@@ -1440,6 +1507,23 @@ fn evaluation_result_to_dict(
         output.set_item("cauer", cauer_dict)?;
     }
 
+    Ok(output.into())
+}
+
+fn bootstrap_result_to_dict(
+    py: Python<'_>,
+    result: pyrth_core::BootstrapResult,
+) -> PyResult<PyObject> {
+    let output = PyDict::new(py);
+    output.set_item("impedance_mean", result.impedance_mean.to_vec())?;
+    output.set_item("impedance_p10", result.impedance_p10.to_vec())?;
+    output.set_item("impedance_median", result.impedance_median.to_vec())?;
+    output.set_item("impedance_p90", result.impedance_p90.to_vec())?;
+    output.set_item("time_spectrum_mean", result.time_spectrum_mean.to_vec())?;
+    output.set_item("time_spectrum_p10", result.time_spectrum_p10.to_vec())?;
+    output.set_item("time_spectrum_median", result.time_spectrum_median.to_vec())?;
+    output.set_item("time_spectrum_p90", result.time_spectrum_p90.to_vec())?;
+    output.set_item("successful_repetitions", result.successful_repetitions)?;
     Ok(output.into())
 }
 
