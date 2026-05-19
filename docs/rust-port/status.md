@@ -105,6 +105,8 @@ implementation remains the reference implementation.
     alias behavior preserved for simple parameter dictionaries
   - `Evaluation().module_labels()` and `Evaluation().module_count()` for the
     current minimal module registry, including duplicate-label suffixing
+  - `Evaluation().module(label)` returns a minimal `StructureFunction` PyO3
+    object with common result attributes and `to_dict()`
   - `Evaluation().save_as_csv(output_dir="output/csv")` and `save_all(...)`
     export all registered standard-evaluation modules through the core CSV
     exporter into per-label subdirectories
@@ -161,6 +163,10 @@ Lanczos Cauer coverage currently checks:
 - first cumulative Cauer block against Python golden for MOSFET TIM and MOSFET dry
 - non-empty, finite, non-negative Cauer branches
 - monotonic cumulative resistance
+- ignored diagnostic coverage for full-array Cauer equality drift; run
+  `cargo test -p pyrth-core --test golden diagnostic_lanczos_cauer_full_array_golden_equality -- --ignored --nocapture`
+  to report the Rust/Python length, first mismatch, maximum absolute drift, and
+  maximum relative drift for each golden fixture
 
 ## Known Gaps
 
@@ -170,21 +176,23 @@ Lanczos Cauer coverage currently checks:
   Python's `np.add.reduceat` tail handling.  The remaining drift comes from the
   long recurrence in `lanczos_inner`: with full-array assertions enabled,
   MOSFET TIM currently stops at a different blockwise length than Python
-  (`3639` Rust blocks versus `3202` Python blocks).  Replacing `powf(2.0)` with
-  multiplication, matching the residual expression order, and trying
-  `ndarray::dot` reduce the drift but still do not reproduce NumPy/Numba's
-  dot-product rounding order, so changing the production recurrence is not yet
-  safe.
+  (`3639` Rust blocks versus `3202` Python blocks), and the diagnostic test
+  currently reports the first MOSFET TIM resistance mismatch at index 2
+  (`0.07755537676220975` Rust versus `0.07712493534368042` Python).  Replacing
+  `powf(2.0)` with multiplication, matching the residual expression order, and
+  trying `ndarray::dot` reduce the drift but still do not reproduce
+  NumPy/Numba's dot-product rounding order, so changing the production
+  recurrence is not yet safe.
 - LED derivative golden equality is not enabled.  Its small-window settings
   hit near-ties in the adaptive estimator and currently diverge by window
-  selection in a few positions.
-- PyO3 returns plain Python dictionaries rather than existing Python
-  `StructureFunction` objects.  The current compatibility layer exposes the
-  high-level `Evaluation` methods as dict-parameter facades, but it does not
-  preserve Python object attributes or `data_handlers`.  `Evaluation` now keeps
-  a minimal label-to-result module registry and exports registered modules via
-  `save_as_csv(...)`, but figure export and object attribute parity are still
-  missing.
+  selection in a few positions.  `led_derivative_python_golden_diagnostic`
+  is an ignored golden test that reports the current first mismatch and max
+  deltas without changing production output.
+- PyO3 high-level evaluation methods still return plain Python dictionaries
+  rather than existing Python `StructureFunction` objects.  `Evaluation` keeps
+  a minimal label-to-result module registry, can return registered modules via
+  `module(label)`, and exports them via `save_as_csv(...)`, but full Python
+  object behavior, exporter hooks, and figure export are still missing.
 - Adaptive deconvolution is a minimal deterministic sparse implementation, not
   full Python adaptive parity.
 - MPFR structure methods and full Python optimization parity are only partly
