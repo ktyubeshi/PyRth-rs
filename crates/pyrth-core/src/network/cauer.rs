@@ -119,7 +119,7 @@ fn dot_k(vector: &[f64], k_diag: &[f64]) -> f64 {
     vector
         .iter()
         .zip(k_diag)
-        .map(|(value, k)| value * k * value)
+        .map(|(value, k)| value * (k * value))
         .sum()
 }
 
@@ -127,7 +127,7 @@ fn dot_c(vector: &[f64], c_diag: &[f64]) -> f64 {
     vector
         .iter()
         .zip(c_diag)
-        .map(|(value, c)| value * c * value)
+        .map(|(value, c)| value * (c * value))
         .sum()
 }
 
