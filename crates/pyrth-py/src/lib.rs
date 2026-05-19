@@ -44,10 +44,27 @@ impl Evaluation {
         let extrapolate = extract_bool(parameters, "extrapolate")?.unwrap_or(false);
         let lower_fit_limit = extract_f64(parameters, "lower_fit_limit")?;
         let upper_fit_limit = extract_f64(parameters, "upper_fit_limit")?;
+        let structure_method =
+            extract_first_string(parameters, &["struc_method", "structure_method"])?;
+        let precision = extract_usize(parameters, "precision")?;
+        let min_index = extract_usize(parameters, "min_index")?;
+        let minimum_window_size = extract_usize(parameters, "minimum_window_size")?;
+        let timespec_interpolate_factor = extract_f64(parameters, "timespec_interpolate_factor")?;
+        let lasso_alpha = extract_f64(parameters, "lasso_alpha")?;
+        let lasso_max_iter = extract_usize(parameters, "lasso_max_iter")?;
+        let lasso_tol = extract_f64(parameters, "lasso_tol")?;
+        let pad_factor_pre = extract_f64(parameters, "pad_factor_pre")?;
+        let pad_factor_after = extract_f64(parameters, "pad_factor_after")?;
+        let minimum_window_length = extract_f64(parameters, "minimum_window_length")?;
+        let maximum_window_length = extract_f64(parameters, "maximum_window_length")?;
+        let window_increment = extract_f64(parameters, "window_increment")?;
+        let expected_var = extract_f64(parameters, "expected_var")?;
 
         let mut overrides = EvalOverrides {
             input_mode,
             deconv_mode,
+            structure_method,
+            precision,
             filter_name,
             filter_range,
             filter_parameter,
@@ -55,7 +72,19 @@ impl Evaluation {
             calc_struc,
             log_time_size,
             bay_steps,
+            min_index,
+            minimum_window_size,
+            timespec_interpolate_factor,
             blockwise_sum_width,
+            lasso_alpha,
+            lasso_max_iter,
+            lasso_tol,
+            pad_factor_pre,
+            pad_factor_after,
+            minimum_window_length,
+            maximum_window_length,
+            window_increment,
+            expected_var,
             power_step,
             power_scale_factor,
             optical_power,
@@ -163,6 +192,8 @@ fn evaluate_impedance(
         EvalOverrides {
             input_mode: None,
             deconv_mode: None,
+            structure_method: None,
+            precision: None,
             filter_name: None,
             filter_range: None,
             filter_parameter: None,
@@ -170,7 +201,19 @@ fn evaluate_impedance(
             calc_struc,
             log_time_size: None,
             bay_steps: None,
+            min_index: None,
+            minimum_window_size: None,
+            timespec_interpolate_factor: None,
             blockwise_sum_width: None,
+            lasso_alpha: None,
+            lasso_max_iter: None,
+            lasso_tol: None,
+            pad_factor_pre: None,
+            pad_factor_after: None,
+            minimum_window_length: None,
+            maximum_window_length: None,
+            window_increment: None,
+            expected_var: None,
             power_step: None,
             power_scale_factor: None,
             optical_power: None,
@@ -190,6 +233,8 @@ fn evaluate_impedance(
 struct EvalOverrides {
     input_mode: Option<String>,
     deconv_mode: Option<String>,
+    structure_method: Option<String>,
+    precision: Option<usize>,
     filter_name: Option<String>,
     filter_range: Option<f64>,
     filter_parameter: Option<f64>,
@@ -197,7 +242,19 @@ struct EvalOverrides {
     calc_struc: bool,
     log_time_size: Option<usize>,
     bay_steps: Option<usize>,
+    min_index: Option<usize>,
+    minimum_window_size: Option<usize>,
+    timespec_interpolate_factor: Option<f64>,
     blockwise_sum_width: Option<usize>,
+    lasso_alpha: Option<f64>,
+    lasso_max_iter: Option<usize>,
+    lasso_tol: Option<f64>,
+    pad_factor_pre: Option<f64>,
+    pad_factor_after: Option<f64>,
+    minimum_window_length: Option<f64>,
+    maximum_window_length: Option<f64>,
+    window_increment: Option<f64>,
+    expected_var: Option<f64>,
     power_step: Option<f64>,
     power_scale_factor: Option<f64>,
     optical_power: Option<f64>,
@@ -245,6 +302,13 @@ fn evaluate_impedance_with_input(
         params.deconv_mode = pyrth_core::DeconvMode::from_label(&deconv_mode)
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
     }
+    if let Some(structure_method) = overrides.structure_method {
+        params.structure_method = pyrth_core::StructureMethod::from_label(&structure_method)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    }
+    if let Some(precision) = overrides.precision {
+        params.precision = precision;
+    }
     if let Some(filter_name) = overrides.filter_name {
         params.filter_name = pyrth_core::FourierFilter::from_label(&filter_name)
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
@@ -263,8 +327,44 @@ fn evaluate_impedance_with_input(
     if let Some(bay_steps) = overrides.bay_steps {
         params.bay_steps = bay_steps;
     }
+    if let Some(min_index) = overrides.min_index {
+        params.min_index = min_index;
+    }
+    if let Some(minimum_window_size) = overrides.minimum_window_size {
+        params.minimum_window_size = minimum_window_size;
+    }
+    if let Some(timespec_interpolate_factor) = overrides.timespec_interpolate_factor {
+        params.timespec_interpolate_factor = timespec_interpolate_factor;
+    }
     if let Some(blockwise_sum_width) = overrides.blockwise_sum_width {
         params.blockwise_sum_width = blockwise_sum_width;
+    }
+    if let Some(lasso_alpha) = overrides.lasso_alpha {
+        params.lasso_alpha = lasso_alpha;
+    }
+    if let Some(lasso_max_iter) = overrides.lasso_max_iter {
+        params.lasso_max_iter = lasso_max_iter;
+    }
+    if let Some(lasso_tol) = overrides.lasso_tol {
+        params.lasso_tol = lasso_tol;
+    }
+    if let Some(pad_factor_pre) = overrides.pad_factor_pre {
+        params.pad_factor_pre = pad_factor_pre;
+    }
+    if let Some(pad_factor_after) = overrides.pad_factor_after {
+        params.pad_factor_after = pad_factor_after;
+    }
+    if let Some(minimum_window_length) = overrides.minimum_window_length {
+        params.minimum_window_length = minimum_window_length;
+    }
+    if let Some(maximum_window_length) = overrides.maximum_window_length {
+        params.maximum_window_length = maximum_window_length;
+    }
+    if let Some(window_increment) = overrides.window_increment {
+        params.window_increment = window_increment;
+    }
+    if let Some(expected_var) = overrides.expected_var {
+        params.expected_var = expected_var;
     }
     if let Some(power_step) = overrides.power_step {
         params.power_step = power_step;

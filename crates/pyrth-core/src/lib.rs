@@ -14,6 +14,7 @@ pub mod error;
 pub mod evaluation;
 pub mod export;
 pub mod network;
+pub mod optimization;
 pub mod prediction;
 pub mod preprocess;
 pub mod t3ster;
@@ -31,6 +32,9 @@ pub use error::{PyrthError, Result};
 pub use evaluation::{evaluate, CauerNetwork, DerivativeResult, EvaluationResult, FosterNetwork};
 pub use export::{export_csv, ExportedCsvFiles};
 pub use network::{cauer_from_foster_lanczos, foster_from_time_spectrum};
+pub use optimization::{
+    impedance_residual_norm, relative_l2_norm, RcParameterBounds, RcParameters,
+};
 pub use prediction::{predict_temperature, TemperaturePredictionResult};
 pub use preprocess::make_impedance_data;
 pub use t3ster::{

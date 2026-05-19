@@ -9,7 +9,7 @@ use std::{
 use pyrth_core::{
     evaluate, export_csv, parse_t3ster_calibration_text, parse_t3ster_power_step,
     parse_t3ster_raw_text, t3ster_raw_to_temperature_input, DeconvMode, EvaluationParams,
-    FourierFilter, InputMode, TransientInput,
+    FourierFilter, InputMode, StructureMethod, TransientInput,
 };
 
 fn main() {
@@ -34,6 +34,10 @@ fn run() -> Result<(), Box<dyn Error>> {
         read_two_column_data(&args.input)?
     };
     params.deconv_mode = args.deconv_mode;
+    params.structure_method = args.structure_method;
+    if let Some(precision) = args.precision {
+        params.precision = precision;
+    }
     params.filter_name = args.filter_name;
     if let Some(filter_range) = args.filter_range {
         params.filter_range = filter_range;
@@ -57,6 +61,18 @@ fn run() -> Result<(), Box<dyn Error>> {
     }
     if let Some(minimum_window_size) = args.minimum_window_size {
         params.minimum_window_size = minimum_window_size;
+    }
+    if let Some(lasso_alpha) = args.lasso_alpha {
+        params.lasso_alpha = lasso_alpha;
+    }
+    if let Some(lasso_max_iter) = args.lasso_max_iter {
+        params.lasso_max_iter = lasso_max_iter;
+    }
+    if let Some(lasso_tol) = args.lasso_tol {
+        params.lasso_tol = lasso_tol;
+    }
+    if let Some(timespec_interpolate_factor) = args.timespec_interpolate_factor {
+        params.timespec_interpolate_factor = timespec_interpolate_factor;
     }
     if let Some(power_step) = args.power_step {
         params.power_step = power_step;
@@ -95,6 +111,8 @@ struct CliArgs {
     output_dir: PathBuf,
     input_mode: InputMode,
     deconv_mode: DeconvMode,
+    structure_method: StructureMethod,
+    precision: Option<usize>,
     filter_name: FourierFilter,
     filter_range: Option<f64>,
     filter_parameter: Option<f64>,
@@ -105,6 +123,10 @@ struct CliArgs {
     blockwise_sum_width: Option<usize>,
     min_index: Option<usize>,
     minimum_window_size: Option<usize>,
+    lasso_alpha: Option<f64>,
+    lasso_max_iter: Option<usize>,
+    lasso_tol: Option<f64>,
+    timespec_interpolate_factor: Option<f64>,
     power_step: Option<f64>,
     power_scale_factor: Option<f64>,
     optical_power: Option<f64>,
@@ -127,6 +149,8 @@ impl CliArgs {
         let mut output_dir = None;
         let mut input_mode = InputMode::Impedance;
         let mut deconv_mode = DeconvMode::Bayesian;
+        let mut structure_method = StructureMethod::Lanczos;
+        let mut precision = None;
         let mut filter_name = FourierFilter::Hann;
         let mut filter_range = None;
         let mut filter_parameter = None;
@@ -137,6 +161,10 @@ impl CliArgs {
         let mut blockwise_sum_width = None;
         let mut min_index = None;
         let mut minimum_window_size = None;
+        let mut lasso_alpha = None;
+        let mut lasso_max_iter = None;
+        let mut lasso_tol = None;
+        let mut timespec_interpolate_factor = None;
         let mut power_step = None;
         let mut power_scale_factor = None;
         let mut optical_power = None;
@@ -176,6 +204,15 @@ impl CliArgs {
                     minimum_window_size =
                         Some(parse_next_usize(&mut args, "--minimum-window-size")?)
                 }
+                "--lasso-alpha" => lasso_alpha = Some(parse_next_f64(&mut args, "--lasso-alpha")?),
+                "--lasso-max-iter" => {
+                    lasso_max_iter = Some(parse_next_usize(&mut args, "--lasso-max-iter")?)
+                }
+                "--lasso-tol" => lasso_tol = Some(parse_next_f64(&mut args, "--lasso-tol")?),
+                "--timespec-interpolate-factor" => {
+                    timespec_interpolate_factor =
+                        Some(parse_next_f64(&mut args, "--timespec-interpolate-factor")?)
+                }
                 "--input-mode" => {
                     let value = args.next().ok_or("missing value for --input-mode")?;
                     input_mode = InputMode::from_label(&value)?;
@@ -184,6 +221,11 @@ impl CliArgs {
                     let value = args.next().ok_or("missing value for --deconv")?;
                     deconv_mode = DeconvMode::from_label(&value)?;
                 }
+                "--structure-method" | "--struc-method" => {
+                    let value = args.next().ok_or("missing value for --structure-method")?;
+                    structure_method = StructureMethod::from_label(&value)?;
+                }
+                "--precision" => precision = Some(parse_next_usize(&mut args, "--precision")?),
                 "--filter-name" | "--filter" => {
                     let value = args.next().ok_or("missing value for --filter-name")?;
                     filter_name = FourierFilter::from_label(&value)?;
@@ -235,6 +277,8 @@ impl CliArgs {
             output_dir: output_dir.unwrap_or_else(|| PathBuf::from("output/rust-cli")),
             input_mode,
             deconv_mode,
+            structure_method,
+            precision,
             filter_name,
             filter_range,
             filter_parameter,
@@ -245,6 +289,10 @@ impl CliArgs {
             blockwise_sum_width,
             min_index,
             minimum_window_size,
+            lasso_alpha,
+            lasso_max_iter,
+            lasso_tol,
+            timespec_interpolate_factor,
             power_step,
             power_scale_factor,
             optical_power,
@@ -265,7 +313,7 @@ impl CliArgs {
 
 fn print_usage() {
     println!(
-        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt|t3ster] [--deconv bayesian|fourier] [--filter-name hann|rectangular|gauss|fermi|nuttall|blackman_nuttall|blackman_harris] [--filter-range <x>] [--filter-parameter <x>] [--power-step <w>] [--power-scale-factor <x>] [--optical-power <w>] [--is-heating] [--calibration <path>] [--t3ster-power <path>] [--t3ster-calibration <path>] [--kfac-fit-deg <n>] [--data-cut-lower <n>] [--data-cut-upper <n>] [--temp-zero-range <start:end>] [--extrapolate --lower-fit-limit <t> --upper-fit-limit <t>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
+        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt|t3ster] [--deconv bayesian|fourier|lasso|adaptive] [--structure-method lanczos|sobhy|boor_golub|khatwani|polylong] [--precision <bits>] [--filter-name hann|rectangular|gauss|fermi|nuttall|blackman_nuttall|blackman_harris] [--filter-range <x>] [--filter-parameter <x>] [--power-step <w>] [--power-scale-factor <x>] [--optical-power <w>] [--is-heating] [--calibration <path>] [--t3ster-power <path>] [--t3ster-calibration <path>] [--kfac-fit-deg <n>] [--data-cut-lower <n>] [--data-cut-upper <n>] [--temp-zero-range <start:end>] [--extrapolate --lower-fit-limit <t> --upper-fit-limit <t>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>] [--lasso-alpha <x>] [--lasso-max-iter <n>] [--lasso-tol <x>] [--timespec-interpolate-factor <x>]"
     );
 }
 

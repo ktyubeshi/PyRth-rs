@@ -28,6 +28,8 @@ implementation remains the reference implementation.
   - Lanczos Cauer conversion
 - Theoretical helpers:
   - Foster RC arrays to theoretical impedance input
+  - validated Foster RC optimization helper parameters, flattening, bounds
+    checks, and impedance residual norms
   - standard temperature prediction by interpolating power and impulse response
   - comparison metrics for two evaluated results
   - deterministic bootstrap means from theoretical RC models
@@ -83,10 +85,15 @@ implementation remains the reference implementation.
     `t3ster_calibration`
   - `standard_module` accepts `input_mode`, `only_make_z`, `calc_struc`,
     `deconv_mode`, `filter_name`, `filter_range`, `filter_parameter`,
-    `log_time_size`, `bay_steps`, `blockwise_sum_width`, `power_step`,
-    `power_scale_factor`, `optical_power`, `is_heating`, `calibration`,
-    `kfac_fit_deg`, `data_cut_lower`, `data_cut_upper`, `temp_0_avg_range`,
-    `extrapolate`, `lower_fit_limit`, and `upper_fit_limit`
+    `log_time_size`, `bay_steps`, `min_index`, `minimum_window_size`,
+    `timespec_interpolate_factor`, `blockwise_sum_width`, `struc_method`,
+    `structure_method`, `precision`, `lasso_alpha`, `lasso_max_iter`,
+    `lasso_tol`, `pad_factor_pre`, `pad_factor_after`,
+    `minimum_window_length`, `maximum_window_length`, `window_increment`,
+    `expected_var`, `power_step`, `power_scale_factor`, `optical_power`,
+    `is_heating`, `calibration`, `kfac_fit_deg`, `data_cut_lower`,
+    `data_cut_upper`, `temp_0_avg_range`, `extrapolate`,
+    `lower_fit_limit`, and `upper_fit_limit`
 
 ## Golden Coverage
 
@@ -100,6 +107,8 @@ Strict golden comparisons currently cover:
 - theoretical single/multiple RC impedance generation
 - standard temperature prediction finite output
 - comparison metric behavior for spectra, structure functions, and resistance
+- optimization helper validation, flatten/unflatten, bounds, and theoretical
+  impedance residuals
 - deterministic theoretical bootstrap means
 
 Lanczos Cauer coverage currently checks:
@@ -121,8 +130,8 @@ Lanczos Cauer coverage currently checks:
   `StructureFunction` objects.
 - Adaptive deconvolution now returns an explicit unsupported error instead of
   falling back to Bayesian.
-- Adaptive deconvolution, MPFR structure methods, and optimization are not
-  ported.
+- Adaptive deconvolution, MPFR structure methods, and the full optimization
+  solver are not ported.
 - Bootstrap and comparison currently cover core numerical helpers only; the
   wider Python module orchestration and exporter parity are not ported.
 - Temperature prediction currently supports standard-evaluation impulse

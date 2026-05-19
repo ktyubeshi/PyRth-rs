@@ -17,6 +17,14 @@ import pyrth_py
 REPO_ROOT = Path(__file__).resolve().parents[3]
 T3STER_DIR = REPO_ROOT / "tests" / "data" / "t3ster"
 DATA = [(1e-6, 0.1), (1e-5, 0.2), (1e-4, 0.3)]
+LASSO_DATA = [
+    (1e-6, 0.10),
+    (3e-6, 0.14),
+    (1e-5, 0.20),
+    (3e-5, 0.29),
+    (1e-4, 0.40),
+    (3e-4, 0.54),
+]
 TEMP_DATA = [(1.0, 20.0), (2.0, 19.0), (3.0, 18.0)]
 EXTRAP_TEMP_DATA = [(1.0, 12.0), (4.0, 14.0), (9.0, 16.0), (16.0, 18.0)]
 VOLT_DATA = [(1.0, 0.5), (2.0, 0.4), (3.0, 0.3)]
@@ -41,8 +49,36 @@ def main() -> None:
     assert_impedance_only(result)
 
     evaluation = pyrth_py.Evaluation()
-    module = evaluation.standard_module({"data": DATA, "only_make_z": True})
+    module = evaluation.standard_module(
+        {"data": DATA, "only_make_z": True, "structure_method": "lanczos"}
+    )
     assert_impedance_only(module)
+
+    lasso_module = evaluation.standard_module(
+        {
+            "data": LASSO_DATA,
+            "deconv_mode": "lasso",
+            "struc_method": "lanczos",
+            "calc_struc": False,
+            "log_time_size": 4,
+            "min_index": 1,
+            "minimum_window_size": 2,
+            "minimum_window_length": 0.1,
+            "maximum_window_length": 0.5,
+            "window_increment": 0.2,
+            "pad_factor_pre": 0.0,
+            "pad_factor_after": 0.0,
+            "expected_var": 0.01,
+            "timespec_interpolate_factor": 1.0,
+            "lasso_alpha": 1e-4,
+            "lasso_max_iter": 2,
+            "lasso_tol": 1e-3,
+            "precision": 64,
+        }
+    )
+    assert "time_spec" in lasso_module
+    assert len(lasso_module["time_spec"]) == 4
+    assert all(math.isfinite(value) for value in lasso_module["time_spec"])
 
     temp_module = evaluation.standard_module(
         {
