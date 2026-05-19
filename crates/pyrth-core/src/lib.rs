@@ -13,6 +13,7 @@ pub mod evaluation;
 pub mod export;
 pub mod network;
 pub mod preprocess;
+pub mod t3ster;
 
 pub use config::{DeconvMode, EvaluationParams, FourierFilter, InputMode, StructureMethod};
 pub use data::{ImpedanceData, TransientInput};
@@ -25,3 +26,7 @@ pub use evaluation::{evaluate, CauerNetwork, DerivativeResult, EvaluationResult,
 pub use export::{export_csv, ExportedCsvFiles};
 pub use network::{cauer_from_foster_lanczos, foster_from_time_spectrum};
 pub use preprocess::make_impedance_data;
+pub use t3ster::{
+    parse_t3ster_calibration_text, parse_t3ster_power_step, parse_t3ster_raw_text,
+    t3ster_raw_to_temperature_input, T3sterRaw,
+};

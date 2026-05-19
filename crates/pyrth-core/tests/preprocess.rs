@@ -1,5 +1,9 @@
 use approx::assert_relative_eq;
-use pyrth_core::{make_impedance_data, EvaluationParams, InputMode, PyrthError, TransientInput};
+use pyrth_core::{
+    make_impedance_data, parse_t3ster_calibration_text, parse_t3ster_power_step,
+    parse_t3ster_raw_text, t3ster_raw_to_temperature_input, EvaluationParams, InputMode,
+    PyrthError, TransientInput,
+};
 
 fn temperature_params() -> EvaluationParams {
     EvaluationParams {
@@ -60,4 +64,49 @@ fn temperature_default_keeps_existing_cut_and_average_path() {
 
     assert_eq!(data.time.as_slice().unwrap(), &[1.0, 3.0]);
     assert_eq!(data.impedance.as_slice().unwrap(), &[0.0, 2.0]);
+}
+
+#[test]
+fn t3ster_text_parsers_load_legacy_sample() {
+    let raw = parse_t3ster_raw_text(include_str!(
+        "../../../tests/data/t3ster/T25_I-m5m-I-h600m_100s.raw"
+    ))
+    .unwrap();
+    let calibration =
+        parse_t3ster_calibration_text(include_str!("../../../tests/data/t3ster/calib.tco"))
+            .unwrap();
+    let power = parse_t3ster_power_step(include_str!(
+        "../../../tests/data/t3ster/T25_I-m5m-I-h600m_100s.pwr"
+    ))
+    .unwrap();
+
+    assert_eq!(raw.time_microseconds.len(), raw.adc_count.len());
+    assert!(raw.time_microseconds.len() > 100);
+    assert_relative_eq!(raw.lsb, 2.4414e-5, epsilon = 1e-12);
+    assert_relative_eq!(raw.uref, 2.5706, epsilon = 1e-12);
+    assert_eq!(calibration.len(), 5);
+    assert_relative_eq!(power, 1.754057, epsilon = 1e-12);
+}
+
+#[test]
+fn t3ster_raw_converts_to_temperature_input() {
+    let raw = parse_t3ster_raw_text(include_str!(
+        "../../../tests/data/t3ster/T25_I-m5m-I-h600m_100s.raw"
+    ))
+    .unwrap();
+    let calibration =
+        parse_t3ster_calibration_text(include_str!("../../../tests/data/t3ster/calib.tco"))
+            .unwrap();
+
+    let input = t3ster_raw_to_temperature_input(&raw, &calibration, 2).unwrap();
+
+    assert_eq!(input.time.len(), input.value.len());
+    assert!(input.time.len() > 100);
+    assert_relative_eq!(input.time[0], 1e-6, epsilon = 1e-12);
+    assert!(input
+        .time
+        .windows(2)
+        .into_iter()
+        .all(|pair| pair[0] < pair[1]));
+    assert!(input.value.iter().all(|value| value.is_finite()));
 }
