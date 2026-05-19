@@ -112,6 +112,9 @@ implementation remains the reference implementation.
     `Evaluation().temperature_prediction({...})` as dict-parameter facades
     over the module-level PyO3 helpers; temperature prediction accepts explicit
     impulse responses, Foster RC arrays, or optimization result dicts
+  - `Evaluation().bootstrap({...})` accepts Python-style theoretical aliases
+    (`theo_resistances`, `theo_capacitances`, `theo_time`,
+    `theo_time_size`) plus `signal_to_noise_ratio` and `random_seed`
   - `Evaluation().comparison(reference, candidate)` for two PyO3 result dicts
     or two standard-evaluation parameter dicts; it also accepts
     `Evaluation().comparison({"reference": ..., "candidate": ...})` as a thin
@@ -195,8 +198,9 @@ Lanczos Cauer coverage currently checks:
 - Bootstrap and comparison currently cover core numerical helpers and thin
   `Evaluation` dict facades.  PyO3 also has standard-only
   `comparison_module` sweep support, but it does not yet port Python's
-  bootstrap comparison modes, optimization comparison modes, from-data
-  bootstrap orchestration, or exporter parity.
+  bootstrap comparison modes, optimization comparison modes, or from-data
+  bootstrap orchestration.  The theoretical bootstrap facade accepts the
+  Python-style theoretical aliases and emits percentile bands.
 - Temperature prediction core and PyO3 helpers now support explicit impulse
   responses, Foster RC parameters, and optimization-result dictionaries, but
   the PyO3 `temperature_prediction` facade still does not run a full

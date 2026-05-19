@@ -153,7 +153,8 @@ Goal:
 ### H. Theoretical Bootstrap
 
 Status: deterministic bootstrap from theoretical RC models is implemented in
-core, including mean and 10/50/90 percentile bands.
+core, including mean and 10/50/90 percentile bands.  The PyO3 bootstrap facade
+also accepts Python-style theoretical aliases and signal-to-noise input.
 
 Owned paths:
 
