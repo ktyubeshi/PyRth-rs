@@ -3,7 +3,8 @@ use std::{fs, path::PathBuf};
 use approx::{assert_relative_eq, relative_eq};
 use ndarray::Array1;
 use pyrth_core::{
-    evaluate, DeconvMode, EvaluationParams, InputMode, StructureMethod, TransientInput,
+    cauer_from_foster_lanczos, evaluate, DeconvMode, EvaluationParams, InputMode, StructureMethod,
+    TransientInput,
 };
 use serde::Deserialize;
 
@@ -47,6 +48,8 @@ struct GoldenReference {
     imp_deriv_interp: Vec<f64>,
     imp_smooth: Vec<f64>,
     imp_smooth_full: Vec<f64>,
+    int_cau_cap: Vec<f64>,
+    int_cau_res: Vec<f64>,
     log_time_delta: f64,
     log_time_interp: Vec<f64>,
     log_time_pad: Vec<f64>,
@@ -114,16 +117,25 @@ fn impedance_and_derivative_match_python_golden() {
         "mosfet_dry_bayesian_lanczos.json",
         "led_bayesian_lanczos.json",
     ] {
-        assert_impedance_matches(fixture_name);
+        let (fixture, result) = evaluate_fixture(fixture_name);
+        assert_impedance_matches(fixture_name, &fixture, &result);
     }
 
     for fixture_name in [
         "mosfet_tim_bayesian_lanczos.json",
         "mosfet_dry_bayesian_lanczos.json",
     ] {
-        assert_derivative_matches(fixture_name);
-        assert_time_spectrum_matches(fixture_name);
-        assert_foster_matches(fixture_name);
+        assert_golden_foster_to_cauer_matches(fixture_name);
+    }
+
+    for fixture_name in [
+        "mosfet_tim_bayesian_lanczos.json",
+        "mosfet_dry_bayesian_lanczos.json",
+    ] {
+        let (fixture, result) = evaluate_fixture(fixture_name);
+        assert_derivative_matches(fixture_name, &fixture, &result);
+        assert_time_spectrum_matches(fixture_name, &fixture, &result);
+        assert_foster_matches(fixture_name, &fixture, &result);
     }
 }
 
@@ -138,8 +150,11 @@ fn evaluate_fixture(fixture_name: &str) -> (GoldenFixture, pyrth_core::Evaluatio
     (fixture, result)
 }
 
-fn assert_impedance_matches(fixture_name: &str) {
-    let (fixture, result) = evaluate_fixture(fixture_name);
+fn assert_impedance_matches(
+    fixture_name: &str,
+    fixture: &GoldenFixture,
+    result: &pyrth_core::EvaluationResult,
+) {
     assert_array_close(
         &format!("{fixture_name}:time"),
         &result.impedance.time,
@@ -157,8 +172,11 @@ fn assert_impedance_matches(fixture_name: &str) {
     );
 }
 
-fn assert_derivative_matches(fixture_name: &str) {
-    let (fixture, result) = evaluate_fixture(fixture_name);
+fn assert_derivative_matches(
+    fixture_name: &str,
+    fixture: &GoldenFixture,
+    result: &pyrth_core::EvaluationResult,
+) {
     let derivative = result.derivative.as_ref().unwrap();
     assert_relative_eq!(
         derivative.log_time_delta,
@@ -193,8 +211,11 @@ fn assert_derivative_matches(fixture_name: &str) {
     );
 }
 
-fn assert_time_spectrum_matches(fixture_name: &str) {
-    let (fixture, result) = evaluate_fixture(fixture_name);
+fn assert_time_spectrum_matches(
+    fixture_name: &str,
+    fixture: &GoldenFixture,
+    result: &pyrth_core::EvaluationResult,
+) {
     let time_spectrum = result.time_spectrum.as_ref().unwrap();
     assert_array_close_with_tolerance(
         &format!("{fixture_name}:time_spec"),
@@ -205,8 +226,11 @@ fn assert_time_spectrum_matches(fixture_name: &str) {
     );
 }
 
-fn assert_foster_matches(fixture_name: &str) {
-    let (fixture, result) = evaluate_fixture(fixture_name);
+fn assert_foster_matches(
+    fixture_name: &str,
+    fixture: &GoldenFixture,
+    result: &pyrth_core::EvaluationResult,
+) {
     let foster = result.foster.as_ref().unwrap();
     assert_array_close_with_tolerance(
         &format!("{fixture_name}:therm_resist_fost"),
@@ -222,6 +246,34 @@ fn assert_foster_matches(fixture_name: &str) {
         1e-8,
         1e-6,
     );
+}
+
+fn assert_golden_foster_to_cauer_matches(fixture_name: &str) {
+    let fixture = read_fixture(fixture_name);
+    let params = params_from_fixture(&fixture);
+    let cauer = cauer_from_foster_lanczos(
+        &Array1::from(fixture.reference.therm_capa_fost.clone()),
+        &Array1::from(fixture.reference.therm_resist_fost.clone()),
+        &params,
+    );
+
+    assert_prefix_close_with_tolerance(
+        &format!("{fixture_name}:int_cau_res"),
+        &cauer.cumulative_resistance,
+        &fixture.reference.int_cau_res,
+        1,
+        1e-7,
+        1e-4,
+    );
+    assert_prefix_close_with_tolerance(
+        &format!("{fixture_name}:int_cau_cap"),
+        &cauer.cumulative_capacitance,
+        &fixture.reference.int_cau_cap,
+        1,
+        1e-7,
+        1e-4,
+    );
+    assert_cauer_is_physical(fixture_name, &cauer);
 }
 
 fn assert_array_close_with_tolerance(
@@ -243,4 +295,77 @@ fn assert_array_close_with_tolerance(
             "mismatch in {name}[{index}]: actual={actual}, expected={expected}"
         );
     }
+}
+
+fn assert_prefix_close_with_tolerance(
+    name: &str,
+    actual: &Array1<f64>,
+    expected: &[f64],
+    prefix_len: usize,
+    epsilon: f64,
+    max_relative: f64,
+) {
+    assert!(
+        actual.len() >= prefix_len,
+        "{name} shorter than prefix length: {} < {prefix_len}",
+        actual.len()
+    );
+    assert!(
+        expected.len() >= prefix_len,
+        "{name} expected shorter than prefix length: {} < {prefix_len}",
+        expected.len()
+    );
+    for index in 0..prefix_len {
+        let actual = actual[index];
+        let expected = expected[index];
+        assert!(
+            relative_eq!(
+                actual,
+                expected,
+                epsilon = epsilon,
+                max_relative = max_relative,
+            ),
+            "mismatch in {name}[{index}]: actual={actual}, expected={expected}"
+        );
+    }
+}
+
+fn assert_cauer_is_physical(fixture_name: &str, cauer: &pyrth_core::CauerNetwork) {
+    assert!(
+        !cauer.resistance.is_empty(),
+        "{fixture_name}: Cauer resistance is empty"
+    );
+    assert!(
+        !cauer.capacitance.is_empty(),
+        "{fixture_name}: Cauer capacitance is empty"
+    );
+    assert!(
+        cauer
+            .resistance
+            .iter()
+            .all(|value| value.is_finite() && *value >= 0.0),
+        "{fixture_name}: Cauer resistance contains invalid values"
+    );
+    assert!(
+        cauer
+            .capacitance
+            .iter()
+            .all(|value| value.is_finite() && *value >= 0.0),
+        "{fixture_name}: Cauer capacitance contains invalid values"
+    );
+    assert!(
+        cauer
+            .cumulative_resistance
+            .windows(2)
+            .into_iter()
+            .all(|pair| pair[0] <= pair[1]),
+        "{fixture_name}: cumulative resistance is not monotonic"
+    );
+    assert!(
+        cauer
+            .cumulative_capacitance
+            .iter()
+            .all(|value| value.is_finite()),
+        "{fixture_name}: cumulative capacitance contains invalid values"
+    );
 }

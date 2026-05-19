@@ -6,7 +6,7 @@ use crate::{
     deconvolution::time_spectrum_bayesian,
     derivative::z_fit_deriv,
     error::{PyrthError, Result},
-    network::foster_from_time_spectrum,
+    network::{cauer_from_foster_lanczos, foster_from_time_spectrum},
     preprocess::make_impedance_data,
 };
 
@@ -56,12 +56,13 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
     let derivative = z_fit_deriv(&impedance.impedance, &impedance.log_time, params)?;
     let time_spectrum = time_spectrum_bayesian(&derivative, params);
     let foster = foster_from_time_spectrum(&derivative.log_time_pad, &time_spectrum, 1e-10)?;
+    let cauer = cauer_from_foster_lanczos(&foster.capacitance, &foster.resistance, params);
 
     Ok(EvaluationResult {
         impedance,
         derivative: Some(derivative),
         time_spectrum: Some(time_spectrum),
         foster: Some(foster),
-        cauer: None,
+        cauer: Some(cauer),
     })
 }
