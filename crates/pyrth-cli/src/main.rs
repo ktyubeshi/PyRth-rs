@@ -31,6 +31,12 @@ fn run() -> Result<(), Box<dyn Error>> {
     if let Some(blockwise_sum_width) = args.blockwise_sum_width {
         params.blockwise_sum_width = blockwise_sum_width;
     }
+    if let Some(min_index) = args.min_index {
+        params.min_index = min_index;
+    }
+    if let Some(minimum_window_size) = args.minimum_window_size {
+        params.minimum_window_size = minimum_window_size;
+    }
 
     let result = evaluate(input, &params)?;
     export_csv(&result, &args.output_dir)?;
@@ -46,6 +52,8 @@ struct CliArgs {
     log_time_size: Option<usize>,
     bay_steps: Option<usize>,
     blockwise_sum_width: Option<usize>,
+    min_index: Option<usize>,
+    minimum_window_size: Option<usize>,
 }
 
 impl CliArgs {
@@ -57,6 +65,8 @@ impl CliArgs {
         let mut log_time_size = None;
         let mut bay_steps = None;
         let mut blockwise_sum_width = None;
+        let mut min_index = None;
+        let mut minimum_window_size = None;
 
         let mut args = args.peekable();
         while let Some(arg) = args.next() {
@@ -77,6 +87,11 @@ impl CliArgs {
                     blockwise_sum_width =
                         Some(parse_next_usize(&mut args, "--blockwise-sum-width")?)
                 }
+                "--min-index" => min_index = Some(parse_next_usize(&mut args, "--min-index")?),
+                "--minimum-window-size" => {
+                    minimum_window_size =
+                        Some(parse_next_usize(&mut args, "--minimum-window-size")?)
+                }
                 _ if input.is_none() => input = Some(PathBuf::from(arg)),
                 _ if output_dir.is_none() => output_dir = Some(PathBuf::from(arg)),
                 _ => return Err(format!("unknown argument: {arg}").into()),
@@ -91,13 +106,15 @@ impl CliArgs {
             log_time_size,
             bay_steps,
             blockwise_sum_width,
+            min_index,
+            minimum_window_size,
         })
     }
 }
 
 fn print_usage() {
     println!(
-        "Usage: pyrth-cli --input <path> --output <dir> [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>]"
+        "Usage: pyrth-cli --input <path> --output <dir> [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
     );
 }
 
