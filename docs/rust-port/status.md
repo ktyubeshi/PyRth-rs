@@ -29,6 +29,8 @@ implementation remains the reference implementation.
 - Theoretical helpers:
   - Foster RC arrays to theoretical impedance input
   - standard temperature prediction by interpolating power and impulse response
+  - comparison metrics for two evaluated results
+  - deterministic bootstrap means from theoretical RC models
 - T3Ster text helpers:
   - legacy `.raw` header/data parser
   - `.pwr` power-step parser
@@ -97,6 +99,8 @@ Strict golden comparisons currently cover:
 - Lasso smoke coverage for finite, non-negative sparse spectrum
 - theoretical single/multiple RC impedance generation
 - standard temperature prediction finite output
+- comparison metric behavior for spectra, structure functions, and resistance
+- deterministic theoretical bootstrap means
 
 Lanczos Cauer coverage currently checks:
 
@@ -117,8 +121,10 @@ Lanczos Cauer coverage currently checks:
   `StructureFunction` objects.
 - Adaptive deconvolution now returns an explicit unsupported error instead of
   falling back to Bayesian.
-- Adaptive, MPFR structure methods, optimization, bootstrap, and comparison are
-  not ported.
+- Adaptive deconvolution, MPFR structure methods, and optimization are not
+  ported.
+- Bootstrap and comparison currently cover core numerical helpers only; the
+  wider Python module orchestration and exporter parity are not ported.
 - Temperature prediction currently supports standard-evaluation impulse
   responses only; optimization-based prediction is not ported.
 - The next implementation work is split into non-overlapping `jj` slices in

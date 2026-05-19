@@ -127,6 +127,39 @@ Goal:
 - Build the foundation for comparison, bootstrap-from-theoretical, and
   temperature prediction workflows.
 
+### G. Comparison Metrics
+
+Status: core result comparison metrics are implemented.
+
+Owned paths:
+
+- `crates/pyrth-core/src/comparison.rs`
+- `crates/pyrth-core/tests/comparison.rs`
+
+Goal:
+
+- Compare evaluated spectra and structure functions with relative L2 norms.
+- Report total resistance differences using Cauer output when available and
+  Foster output as a fallback.
+
+### H. Theoretical Bootstrap
+
+Status: deterministic bootstrap from theoretical RC models is implemented in
+core.
+
+Owned paths:
+
+- `crates/pyrth-core/src/bootstrap.rs`
+- `crates/pyrth-core/tests/bootstrap.rs`
+- `Cargo.toml`
+- `Cargo.lock`
+
+Goal:
+
+- Generate noisy theoretical impedance traces with a fixed seed.
+- Re-run the existing evaluation pipeline and average successful impedance and
+  time-spectrum outputs.
+
 ## Landing Rules
 
 - Do not edit another slice's owned paths unless explicitly coordinating.

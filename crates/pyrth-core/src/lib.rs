@@ -4,6 +4,8 @@
 //! stage can be compared against Python golden fixtures before more algorithms
 //! are ported.
 
+pub mod bootstrap;
+pub mod comparison;
 pub mod config;
 pub mod data;
 pub mod deconvolution;
@@ -17,6 +19,8 @@ pub mod preprocess;
 pub mod t3ster;
 pub mod theoretical;
 
+pub use bootstrap::{bootstrap_from_theoretical, BootstrapResult};
+pub use comparison::{compare_evaluations, ComparisonResult};
 pub use config::{DeconvMode, EvaluationParams, FourierFilter, InputMode, StructureMethod};
 pub use data::{ImpedanceData, TransientInput};
 pub use deconvolution::{
