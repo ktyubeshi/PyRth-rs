@@ -242,11 +242,11 @@ fn tmp_to_z(
     params: &EvaluationParams,
 ) -> Result<Array1<f64>> {
     let denom = (params.power_step.abs() - params.optical_power) * params.power_scale_factor;
-    if denom == 0.0 || !denom.is_finite() {
+    if !denom.is_finite() || denom <= 0.0 {
         return Err(PyrthError::InvalidParameter {
-            parameter: "power_step",
-            expected: "finite non-zero effective power denominator",
-            actual: params.power_step.to_string(),
+            parameter: "effective power",
+            expected: "positive finite value",
+            actual: denom.to_string(),
         });
     }
     Ok(Array1::from_iter(temperature.iter().map(|temp| {

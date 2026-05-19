@@ -56,29 +56,8 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
             ));
         }
     }
-    if !params.only_make_z && input.time.len() < 2 {
-        return Err(PyrthError::InvalidParameter {
-            parameter: "data",
-            expected: "at least two samples when only_make_z is false",
-            actual: input.time.len().to_string(),
-        });
-    }
-    if !params.only_make_z && input.time.len() <= params.min_index {
-        return Err(PyrthError::InvalidParameter {
-            parameter: "min_index",
-            expected: "less than input sample count",
-            actual: params.min_index.to_string(),
-        });
-    }
-    if !params.only_make_z && input.time.len() < params.minimum_window_size {
-        return Err(PyrthError::InvalidParameter {
-            parameter: "minimum_window_size",
-            expected: "less than or equal to input sample count",
-            actual: params.minimum_window_size.to_string(),
-        });
-    }
-
     let impedance = make_impedance_data(input, params)?;
+    validate_impedance_for_evaluation(&impedance, params)?;
     if params.only_make_z {
         return Ok(EvaluationResult {
             impedance,
@@ -149,6 +128,40 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
         foster: Some(foster),
         cauer,
     })
+}
+
+fn validate_impedance_for_evaluation(
+    impedance: &ImpedanceData,
+    params: &EvaluationParams,
+) -> Result<()> {
+    if params.only_make_z {
+        return Ok(());
+    }
+
+    let len = impedance.time.len();
+    if len < 2 {
+        return Err(PyrthError::InvalidParameter {
+            parameter: "preprocessed data",
+            expected: "at least two samples when only_make_z is false",
+            actual: len.to_string(),
+        });
+    }
+    if len <= params.min_index {
+        return Err(PyrthError::InvalidParameter {
+            parameter: "min_index",
+            expected: "less than preprocessed input sample count",
+            actual: format!("{} >= {len}", params.min_index),
+        });
+    }
+    if len < params.minimum_window_size {
+        return Err(PyrthError::InvalidParameter {
+            parameter: "minimum_window_size",
+            expected: "less than or equal to preprocessed input sample count",
+            actual: format!("{} > {len}", params.minimum_window_size),
+        });
+    }
+
+    Ok(())
 }
 
 fn validate_params(params: &EvaluationParams) -> Result<()> {

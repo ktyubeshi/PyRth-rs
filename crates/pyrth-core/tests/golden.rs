@@ -506,7 +506,7 @@ fn invalid_evaluation_params_return_errors() {
     assert!(matches!(
         err,
         PyrthError::InvalidParameter {
-            parameter: "data",
+            parameter: "preprocessed data",
             ..
         }
     ));
@@ -518,6 +518,21 @@ fn invalid_evaluation_params_return_errors() {
         err,
         PyrthError::InvalidParameter {
             parameter: "min_index",
+            ..
+        }
+    ));
+
+    let input = TransientInput::from_pairs([(1.0, 20.0), (2.0, 19.0), (3.0, 18.0)]).unwrap();
+    let mut params = EvaluationParams::default();
+    params.input_mode = InputMode::Temperature;
+    params.data_cut_lower = 2;
+    params.data_cut_upper = Some(3);
+    params.temp_0_avg_range = (0, 1);
+    let err = evaluate(input, &params).unwrap_err();
+    assert!(matches!(
+        err,
+        PyrthError::InvalidParameter {
+            parameter: "preprocessed data",
             ..
         }
     ));
@@ -540,6 +555,27 @@ fn temperature_input_converts_to_impedance() {
         &result.impedance.impedance,
         &[0.0, 0.5, 1.0],
     );
+}
+
+#[test]
+fn temperature_input_rejects_non_positive_effective_power() {
+    let input = TransientInput::from_pairs([(1.0, 20.0), (2.0, 19.0), (3.0, 18.0)]).unwrap();
+    let mut params = EvaluationParams::default();
+    params.input_mode = InputMode::Temperature;
+    params.only_make_z = true;
+    params.power_step = 1.0;
+    params.optical_power = 1.5;
+    params.temp_0_avg_range = (0, 1);
+
+    let err = evaluate(input, &params).unwrap_err();
+
+    assert!(matches!(
+        err,
+        PyrthError::InvalidParameter {
+            parameter: "effective power",
+            ..
+        }
+    ));
 }
 
 #[test]
