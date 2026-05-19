@@ -1,4 +1,6 @@
 use ndarray::Array1;
+#[cfg(feature = "mpfr")]
+use rug::Float;
 
 use crate::{
     error::{PyrthError, Result},
@@ -48,6 +50,36 @@ pub fn cauer_from_foster_poly_long_f64(
     let rational = foster_impedance_rational_f64(foster_resistance, foster_capacitance)?;
     let (resistance, capacitance) =
         poly_long_division_to_cauer_f64(&rational.numerator, &rational.denominator)?;
+    let cumulative_resistance = cumulative_sum(&resistance);
+    let cumulative_capacitance = cumulative_sum(&capacitance);
+    let differential_structure =
+        differential_structure(&cumulative_resistance, &cumulative_capacitance);
+
+    Ok(CauerNetwork {
+        resistance: Array1::from(resistance),
+        capacitance: Array1::from(capacitance),
+        cumulative_resistance: Array1::from(cumulative_resistance),
+        cumulative_capacitance: Array1::from(cumulative_capacitance),
+        differential_structure: Array1::from(differential_structure),
+    })
+}
+
+#[cfg(feature = "mpfr")]
+pub fn cauer_from_foster_poly_long_mpfr(
+    foster_resistance: &Array1<f64>,
+    foster_capacitance: &Array1<f64>,
+    precision: usize,
+) -> Result<CauerNetwork> {
+    validate_foster_inputs(foster_resistance, foster_capacitance)?;
+    let precision = u32::try_from(precision).map_err(|_| PyrthError::InvalidParameter {
+        parameter: "precision",
+        expected: "less than or equal to u32::MAX",
+        actual: precision.to_string(),
+    })?;
+
+    let rational = foster_impedance_rational_mpfr(foster_resistance, foster_capacitance, precision);
+    let (resistance, capacitance) =
+        poly_long_division_to_cauer_mpfr(&rational.numerator, &rational.denominator, precision)?;
     let cumulative_resistance = cumulative_sum(&resistance);
     let cumulative_capacitance = cumulative_sum(&capacitance);
     let differential_structure =
@@ -235,6 +267,210 @@ fn validate_foster_inputs(resistance: &Array1<f64>, capacitance: &Array1<f64>) -
         return invalid_structure("finite positive Foster resistance and capacitance values");
     }
     Ok(())
+}
+
+#[cfg(feature = "mpfr")]
+#[derive(Clone, Debug, PartialEq)]
+struct FosterRationalMpfr {
+    numerator: Vec<Float>,
+    denominator: Vec<Float>,
+}
+
+#[cfg(feature = "mpfr")]
+fn foster_impedance_rational_mpfr(
+    foster_resistance: &Array1<f64>,
+    foster_capacitance: &Array1<f64>,
+    precision: u32,
+) -> FosterRationalMpfr {
+    let mut numerator = vec![Float::with_val(precision, 0)];
+    let mut denominator = vec![Float::with_val(precision, 1)];
+
+    for (&resistance, &capacitance) in foster_resistance.iter().zip(foster_capacitance) {
+        let branch_num = [Float::with_val(precision, resistance)];
+        let branch_den = [
+            Float::with_val(precision, 1),
+            Float::with_val(precision, resistance * capacitance),
+        ];
+
+        let num_left = polynomial_mul_mpfr(&numerator, &branch_den, precision);
+        let num_right = polynomial_mul_mpfr(&branch_num, &denominator, precision);
+        numerator = polynomial_add_mpfr(&num_left, &num_right, precision);
+        denominator = polynomial_mul_mpfr(&branch_den, &denominator, precision);
+
+        trim_trailing_zeros_mpfr(&mut numerator);
+        trim_trailing_zeros_mpfr(&mut denominator);
+    }
+
+    FosterRationalMpfr {
+        numerator,
+        denominator,
+    }
+}
+
+#[cfg(feature = "mpfr")]
+fn poly_long_division_to_cauer_mpfr(
+    numerator: &[Float],
+    denominator: &[Float],
+    precision: u32,
+) -> Result<(Vec<f64>, Vec<f64>)> {
+    if numerator.is_empty() || denominator.len() < 2 {
+        return invalid_structure("non-empty numerator and denominator degree at least one");
+    }
+
+    let terms = denominator.len() - 1;
+    let mut resistance = Vec::with_capacity(terms);
+    let mut capacitance = Vec::with_capacity(terms);
+    let mut num = numerator.to_vec();
+    let mut den = denominator.to_vec();
+
+    for _ in 0..terms {
+        let (next_num, next_den, cap, res) = precision_step_mpfr(&num, &den, precision)?;
+        let cap_f64 = cap.to_f64();
+        let res_f64 = res.to_f64();
+        if !res_f64.is_finite() || !cap_f64.is_finite() || res_f64 <= 0.0 || cap_f64 <= 0.0 {
+            return invalid_structure("finite positive Cauer elements");
+        }
+        resistance.push(res_f64);
+        capacitance.push(cap_f64);
+        num = next_num;
+        den = next_den;
+    }
+
+    Ok((resistance, capacitance))
+}
+
+#[cfg(feature = "mpfr")]
+fn precision_step_mpfr(
+    numerator: &[Float],
+    denominator: &[Float],
+    precision: u32,
+) -> Result<(Vec<Float>, Vec<Float>, Float, Float)> {
+    let (quotient, remainder) = polynomial_division_mpfr(denominator, numerator, precision)?;
+    if quotient.len() < 2 || quotient[0] == 0 {
+        return invalid_structure("linear quotient with non-zero constant term");
+    }
+
+    let res_inv = quotient[0].clone();
+    let cap = quotient[1].clone();
+    let res = Float::with_val(precision, Float::with_val(precision, 1) / &res_inv);
+
+    let mut num_new = Vec::with_capacity(numerator.len());
+    let mut den_new = Vec::with_capacity(numerator.len());
+    for i in 0..numerator.len() {
+        let rem = remainder
+            .get(i)
+            .cloned()
+            .unwrap_or_else(|| Float::with_val(precision, 0));
+        num_new.push(Float::with_val(
+            precision,
+            -Float::with_val(precision, &res * &rem),
+        ));
+        den_new.push(Float::with_val(
+            precision,
+            Float::with_val(precision, &res_inv * &numerator[i]) + rem,
+        ));
+    }
+    trim_trailing_zeros_mpfr(&mut num_new);
+    trim_trailing_zeros_mpfr(&mut den_new);
+
+    Ok((num_new, den_new, cap, res))
+}
+
+#[cfg(feature = "mpfr")]
+fn polynomial_division_mpfr(
+    numerator: &[Float],
+    denominator: &[Float],
+    precision: u32,
+) -> Result<(Vec<Float>, Vec<Float>)> {
+    if denominator.is_empty() {
+        return invalid_structure("non-empty division denominator");
+    }
+
+    let numerator_degree = degree_mpfr(numerator);
+    let denominator_degree =
+        degree_mpfr(denominator).ok_or_else(|| PyrthError::InvalidParameter {
+            parameter: "structure_method",
+            expected: "non-zero polynomial divisor",
+            actual: "zero polynomial".to_string(),
+        })?;
+
+    let Some(numerator_degree) = numerator_degree else {
+        return Ok((
+            vec![Float::with_val(precision, 0)],
+            vec![Float::with_val(precision, 0); numerator.len()],
+        ));
+    };
+
+    let mut remainder = numerator.to_vec();
+    let mut quotient = vec![Float::with_val(precision, 0); numerator.len()];
+
+    if numerator_degree >= denominator_degree {
+        for k in (0..=numerator_degree - denominator_degree).rev() {
+            quotient[k] = Float::with_val(
+                precision,
+                &remainder[denominator_degree + k] / &denominator[denominator_degree],
+            );
+            for j in (k..denominator_degree + k).rev() {
+                let term = Float::with_val(precision, &quotient[k] * &denominator[j - k]);
+                remainder[j] = Float::with_val(precision, &remainder[j] - term);
+            }
+        }
+    }
+
+    for item in remainder
+        .iter_mut()
+        .take(numerator_degree + 1)
+        .skip(denominator_degree)
+    {
+        *item = Float::with_val(precision, 0);
+    }
+    trim_trailing_zeros_mpfr(&mut quotient);
+    trim_trailing_zeros_mpfr(&mut remainder);
+
+    Ok((quotient, remainder))
+}
+
+#[cfg(feature = "mpfr")]
+fn polynomial_mul_mpfr(left: &[Float], right: &[Float], precision: u32) -> Vec<Float> {
+    let mut product = vec![Float::with_val(precision, 0); left.len() + right.len() - 1];
+    for (left_index, left_value) in left.iter().enumerate() {
+        for (right_index, right_value) in right.iter().enumerate() {
+            let term = Float::with_val(precision, left_value * right_value);
+            product[left_index + right_index] =
+                Float::with_val(precision, &product[left_index + right_index] + term);
+        }
+    }
+    product
+}
+
+#[cfg(feature = "mpfr")]
+fn polynomial_add_mpfr(left: &[Float], right: &[Float], precision: u32) -> Vec<Float> {
+    let len = left.len().max(right.len());
+    let mut sum = vec![Float::with_val(precision, 0); len];
+    for (i, value) in sum.iter_mut().enumerate() {
+        let left_value = left
+            .get(i)
+            .cloned()
+            .unwrap_or_else(|| Float::with_val(precision, 0));
+        let right_value = right
+            .get(i)
+            .cloned()
+            .unwrap_or_else(|| Float::with_val(precision, 0));
+        *value = Float::with_val(precision, left_value + right_value);
+    }
+    sum
+}
+
+#[cfg(feature = "mpfr")]
+fn trim_trailing_zeros_mpfr(values: &mut Vec<Float>) {
+    while values.len() > 1 && values.last().is_some_and(|value| *value == 0) {
+        values.pop();
+    }
+}
+
+#[cfg(feature = "mpfr")]
+fn degree_mpfr(values: &[Float]) -> Option<usize> {
+    values.iter().rposition(|value| *value != 0)
 }
 
 fn invalid_structure<T>(expected: &'static str) -> Result<T> {

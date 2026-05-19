@@ -54,6 +54,16 @@ def main() -> None:
     )
     assert_impedance_only(module)
 
+    standard = evaluation.standard(
+        {"data": DATA, "only_make_z": True, "structure_method": "lanczos"}
+    )
+    assert_impedance_only(standard)
+
+    module_set = evaluation.standard_module_set(
+        {"data": DATA, "only_make_z": True, "structure_method": "lanczos"}
+    )
+    assert_impedance_only(module_set)
+
     lasso_module = evaluation.standard_module(
         {
             "data": LASSO_DATA,
@@ -85,6 +95,19 @@ def main() -> None:
     assert len(theoretical["time"]) == 8
     assert all(math.isfinite(value) for value in theoretical["impedance"])
 
+    theoretical_facade = evaluation.theoretical(
+        {
+            "resistance": [1.0, 2.0],
+            "capacitance": [0.5, 1.5],
+            "time_start": 1e-6,
+            "time_end": 1e-2,
+            "time_size": 8,
+        }
+    )
+    assert sorted(theoretical_facade) == ["impedance", "time"]
+    assert len(theoretical_facade["time"]) == 8
+    assert all(math.isfinite(value) for value in theoretical_facade["impedance"])
+
     bootstrap = pyrth_py.bootstrap_theoretical(
         [1.0, 2.0],
         [0.5, 1.5],
@@ -99,6 +122,23 @@ def main() -> None:
     assert len(bootstrap["impedance_mean"]) == 80
     assert len(bootstrap["time_spectrum_mean"]) > 0
     assert all(math.isfinite(value) for value in bootstrap["time_spectrum_mean"])
+
+    bootstrap_facade = evaluation.bootstrap(
+        {
+            "resistance": [1.0, 2.0],
+            "capacitance": [0.5, 1.5],
+            "time_start": 1e-6,
+            "time_end": 1e-1,
+            "time_size": 80,
+            "repetitions": 2,
+            "noise_std": 0.0,
+            "seed": 7,
+        }
+    )
+    assert bootstrap_facade["successful_repetitions"] == 2
+    assert len(bootstrap_facade["impedance_mean"]) == 80
+    assert len(bootstrap_facade["time_spectrum_mean"]) > 0
+    assert all(math.isfinite(value) for value in bootstrap_facade["time_spectrum_mean"])
 
     target = pyrth_py.theoretical_impedance([1.0, 3.0], [0.4, 2.0], 1e-3, 1e2, 32)
     optimized = pyrth_py.optimize_rc(
@@ -119,6 +159,31 @@ def main() -> None:
     assert optimized["iterations"] > 0
     assert math.isfinite(optimized["residual_norm"])
 
+    optimized_facade = evaluation.optimization(
+        {
+            "data": list(zip(target["time"], target["impedance"])),
+            "initial_resistance": [0.75, 3.5],
+            "initial_capacitance": [0.65, 1.5],
+            "lower_resistance": [0.5, 2.0],
+            "lower_capacitance": [0.2, 1.0],
+            "upper_resistance": [1.5, 4.0],
+            "upper_capacitance": [1.0, 3.0],
+            "max_iter": 8,
+            "initial_step": 0.25,
+            "min_step": 1e-3,
+        }
+    )
+    assert sorted(optimized_facade) == [
+        "capacitance",
+        "iterations",
+        "residual_norm",
+        "resistance",
+    ]
+    assert len(optimized_facade["resistance"]) == 2
+    assert len(optimized_facade["capacitance"]) == 2
+    assert optimized_facade["iterations"] > 0
+    assert math.isfinite(optimized_facade["residual_norm"])
+
     prediction_input = pyrth_py.theoretical_impedance([1.0], [0.5], 1e-6, 1e-2, 80)
     predicted = pyrth_py.predict_temperature_response(
         list(zip(prediction_input["time"], prediction_input["impedance"])),
@@ -129,6 +194,30 @@ def main() -> None:
     assert len(predicted["time"]) == len(predicted["temperature"])
     assert len(predicted["time"]) > 0
     assert all(math.isfinite(value) for value in predicted["temperature"])
+
+    predicted_facade = evaluation.temperature_prediction(
+        {
+            "impulse_response": list(
+                zip(prediction_input["time"], prediction_input["impedance"])
+            ),
+            "power_data": [(0.0, 0.0), (0.02, 1.0), (0.04, 0.5)],
+            "lin_sampling_period": 1e-3,
+        }
+    )
+    assert sorted(predicted_facade) == ["temperature", "time"]
+    assert len(predicted_facade["time"]) == len(predicted_facade["temperature"])
+    assert len(predicted_facade["time"]) > 0
+    assert all(math.isfinite(value) for value in predicted_facade["temperature"])
+
+    comparison = evaluation.comparison(lasso_module, lasso_module)
+    assert sorted(comparison) == [
+        "structure_norm",
+        "time_const_norm",
+        "total_resistance_diff",
+    ]
+    assert comparison["time_const_norm"] == 0.0
+    assert comparison["structure_norm"] == 0.0
+    assert comparison["total_resistance_diff"] == 0.0
 
     temp_module = evaluation.standard_module(
         {

@@ -10,9 +10,14 @@ csv.workspace = true
 ndarray.workspace = true
 rand.workspace = true
 rand_distr.workspace = true
+rug = { workspace = true, optional = true }
 rustfft.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+
+[features]
+default = []
+mpfr = ["dep:rug"]
 
 [dev-dependencies]
 approx.workspace = true

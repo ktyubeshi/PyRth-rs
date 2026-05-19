@@ -15,6 +15,114 @@ impl Evaluation {
         Self
     }
 
+    fn standard(&self, py: Python<'_>, parameters: &Bound<'_, PyDict>) -> PyResult<PyObject> {
+        self.standard_module(py, parameters)
+    }
+
+    fn standard_module_set(
+        &self,
+        py: Python<'_>,
+        parameters: &Bound<'_, PyDict>,
+    ) -> PyResult<PyObject> {
+        self.standard_module(py, parameters)
+    }
+
+    fn theoretical(&self, py: Python<'_>, parameters: &Bound<'_, PyDict>) -> PyResult<PyObject> {
+        let resistance =
+            require_first_vec_f64(parameters, &["resistance", "theoretical_resistance"])?;
+        let capacitance =
+            require_first_vec_f64(parameters, &["capacitance", "theoretical_capacitance"])?;
+        let time_start = require_first_f64(parameters, &["time_start"])?;
+        let time_end = require_first_f64(parameters, &["time_end"])?;
+        let time_size = require_first_usize(parameters, &["time_size"])?;
+
+        theoretical_impedance(py, resistance, capacitance, time_start, time_end, time_size)
+    }
+
+    fn bootstrap(&self, py: Python<'_>, parameters: &Bound<'_, PyDict>) -> PyResult<PyObject> {
+        let resistance =
+            require_first_vec_f64(parameters, &["resistance", "theoretical_resistance"])?;
+        let capacitance =
+            require_first_vec_f64(parameters, &["capacitance", "theoretical_capacitance"])?;
+        let time_start = require_first_f64(parameters, &["time_start"])?;
+        let time_end = require_first_f64(parameters, &["time_end"])?;
+        let time_size = require_first_usize(parameters, &["time_size"])?;
+        let repetitions = require_first_usize(parameters, &["repetitions"])?;
+        let noise_std = require_first_f64(parameters, &["noise_std"])?;
+        let seed = extract_u64(parameters, "seed")?.unwrap_or(0);
+
+        bootstrap_theoretical(
+            py,
+            resistance,
+            capacitance,
+            time_start,
+            time_end,
+            time_size,
+            repetitions,
+            noise_std,
+            seed,
+        )
+    }
+
+    fn optimization(&self, py: Python<'_>, parameters: &Bound<'_, PyDict>) -> PyResult<PyObject> {
+        let data = require_pairs(parameters, "data")?;
+        let initial_resistance = require_first_vec_f64(parameters, &["initial_resistance"])?;
+        let initial_capacitance = require_first_vec_f64(parameters, &["initial_capacitance"])?;
+        let lower_resistance = require_first_vec_f64(parameters, &["lower_resistance"])?;
+        let lower_capacitance = require_first_vec_f64(parameters, &["lower_capacitance"])?;
+        let upper_resistance = require_first_vec_f64(parameters, &["upper_resistance"])?;
+        let upper_capacitance = require_first_vec_f64(parameters, &["upper_capacitance"])?;
+        let max_iter = extract_usize(parameters, "max_iter")?.unwrap_or(128);
+        let initial_step = extract_f64(parameters, "initial_step")?.unwrap_or(0.1);
+        let min_step = extract_f64(parameters, "min_step")?.unwrap_or(1e-6);
+        let shrink_factor = extract_f64(parameters, "shrink_factor")?.unwrap_or(0.5);
+
+        optimize_rc(
+            py,
+            data,
+            initial_resistance,
+            initial_capacitance,
+            lower_resistance,
+            lower_capacitance,
+            upper_resistance,
+            upper_capacitance,
+            max_iter,
+            initial_step,
+            min_step,
+            shrink_factor,
+        )
+    }
+
+    fn temperature_prediction(
+        &self,
+        py: Python<'_>,
+        parameters: &Bound<'_, PyDict>,
+    ) -> PyResult<PyObject> {
+        let impulse_response = require_first_pairs(parameters, &["impulse_response", "data"])?;
+        let power_data = require_first_pairs(parameters, &["power_data", "power"])?;
+        let lin_sampling_period = extract_f64(parameters, "lin_sampling_period")?.unwrap_or(1.0);
+
+        predict_temperature_response(py, impulse_response, power_data, lin_sampling_period)
+    }
+
+    fn comparison(
+        &self,
+        py: Python<'_>,
+        reference: &Bound<'_, PyDict>,
+        candidate: &Bound<'_, PyDict>,
+    ) -> PyResult<PyObject> {
+        let reference = evaluation_result_from_result_or_params(py, self, reference)?;
+        let candidate = evaluation_result_from_result_or_params(py, self, candidate)?;
+        let result = pyrth_core::compare_evaluations(&reference, &candidate)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+        let output = PyDict::new(py);
+        output.set_item("time_const_norm", result.time_const_norm)?;
+        output.set_item("structure_norm", result.structure_norm)?;
+        output.set_item("total_resistance_diff", result.total_resistance_diff)?;
+        Ok(output.into())
+    }
+
     fn standard_module(
         &self,
         py: Python<'_>,
@@ -413,6 +521,107 @@ struct EvalOverrides {
     upper_fit_limit: Option<f64>,
 }
 
+fn evaluation_result_from_result_or_params(
+    py: Python<'_>,
+    evaluation: &Evaluation,
+    parameters: &Bound<'_, PyDict>,
+) -> PyResult<pyrth_core::EvaluationResult> {
+    if looks_like_evaluation_result(parameters)? {
+        return evaluation_result_from_dict(parameters);
+    }
+
+    let output = evaluation.standard_module(py, parameters)?;
+    let output = output.bind(py).downcast::<PyDict>().map_err(|err| {
+        PyValueError::new_err(format!(
+            "comparison parameters did not evaluate to a dict: {err}"
+        ))
+    })?;
+    evaluation_result_from_dict(output)
+}
+
+fn looks_like_evaluation_result(parameters: &Bound<'_, PyDict>) -> PyResult<bool> {
+    if parameters.get_item("data")?.is_some()
+        || parameters.get_item("input")?.is_some()
+        || parameters.get_item("infile")?.is_some()
+    {
+        return Ok(false);
+    }
+
+    Ok(parameters.get_item("time_spec")?.is_some()
+        || parameters.get_item("time_spectrum")?.is_some()
+        || parameters.get_item("foster")?.is_some()
+        || parameters.get_item("cauer")?.is_some()
+        || (parameters.get_item("time")?.is_some() && parameters.get_item("impedance")?.is_some()))
+}
+
+fn evaluation_result_from_dict(
+    parameters: &Bound<'_, PyDict>,
+) -> PyResult<pyrth_core::EvaluationResult> {
+    let time = extract_vec_f64(parameters, "time")?.unwrap_or_default();
+    let impedance = extract_vec_f64(parameters, "impedance")?.unwrap_or_default();
+    let log_time = extract_vec_f64(parameters, "log_time")?.unwrap_or_default();
+    let time_spectrum =
+        extract_first_vec_f64(parameters, &["time_spec", "time_spectrum"])?.map(Into::into);
+    let foster = extract_foster_network(parameters)?;
+    let cauer = extract_cauer_network(parameters)?;
+
+    Ok(pyrth_core::EvaluationResult {
+        impedance: pyrth_core::ImpedanceData {
+            time: time.into(),
+            impedance: impedance.into(),
+            log_time: log_time.into(),
+        },
+        derivative: None,
+        time_spectrum,
+        foster,
+        cauer,
+    })
+}
+
+fn extract_foster_network(
+    parameters: &Bound<'_, PyDict>,
+) -> PyResult<Option<pyrth_core::FosterNetwork>> {
+    let Some(value) = parameters.get_item("foster")? else {
+        return Ok(None);
+    };
+    let foster = value
+        .downcast::<PyDict>()
+        .map_err(|err| PyValueError::new_err(format!("foster must be a dict: {err}")))?;
+    let resistance = require_first_vec_f64(foster, &["resistance"])?;
+    let capacitance = require_first_vec_f64(foster, &["capacitance"])?;
+    let tau = require_first_vec_f64(foster, &["tau"])?;
+
+    Ok(Some(pyrth_core::FosterNetwork {
+        resistance: resistance.into(),
+        capacitance: capacitance.into(),
+        tau: tau.into(),
+    }))
+}
+
+fn extract_cauer_network(
+    parameters: &Bound<'_, PyDict>,
+) -> PyResult<Option<pyrth_core::CauerNetwork>> {
+    let Some(value) = parameters.get_item("cauer")? else {
+        return Ok(None);
+    };
+    let cauer = value
+        .downcast::<PyDict>()
+        .map_err(|err| PyValueError::new_err(format!("cauer must be a dict: {err}")))?;
+    let resistance = require_first_vec_f64(cauer, &["resistance"])?;
+    let capacitance = require_first_vec_f64(cauer, &["capacitance"])?;
+    let cumulative_resistance = require_first_vec_f64(cauer, &["cumulative_resistance"])?;
+    let cumulative_capacitance = require_first_vec_f64(cauer, &["cumulative_capacitance"])?;
+    let differential_structure = require_first_vec_f64(cauer, &["differential_structure"])?;
+
+    Ok(Some(pyrth_core::CauerNetwork {
+        resistance: resistance.into(),
+        capacitance: capacitance.into(),
+        cumulative_resistance: cumulative_resistance.into(),
+        cumulative_capacitance: cumulative_capacitance.into(),
+        differential_structure: differential_structure.into(),
+    }))
+}
+
 fn evaluate_impedance_with_params(
     py: Python<'_>,
     data: Vec<(f64, f64)>,
@@ -627,12 +836,94 @@ fn extract_f64(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<f64
         .map_err(|err| PyValueError::new_err(format!("{key} must be a number: {err}")))
 }
 
+fn extract_u64(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<u64>> {
+    parameters
+        .get_item(key)?
+        .map(|value| value.extract::<u64>())
+        .transpose()
+        .map_err(|err| PyValueError::new_err(format!("{key} must be a positive integer: {err}")))
+}
+
 fn extract_string(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<String>> {
     parameters
         .get_item(key)?
         .map(|value| value.extract::<String>())
         .transpose()
         .map_err(|err| PyValueError::new_err(format!("{key} must be a string: {err}")))
+}
+
+fn extract_vec_f64(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Vec<f64>>> {
+    parameters
+        .get_item(key)?
+        .map(|value| value.extract::<Vec<f64>>())
+        .transpose()
+        .map_err(|err| PyValueError::new_err(format!("{key} must be a sequence of numbers: {err}")))
+}
+
+fn extract_pairs(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Vec<(f64, f64)>>> {
+    parameters
+        .get_item(key)?
+        .map(|value| value.extract::<Vec<(f64, f64)>>())
+        .transpose()
+        .map_err(|err| PyValueError::new_err(format!("{key} must be a sequence of pairs: {err}")))
+}
+
+fn extract_first_vec_f64(
+    parameters: &Bound<'_, PyDict>,
+    keys: &[&str],
+) -> PyResult<Option<Vec<f64>>> {
+    for key in keys {
+        if let Some(value) = extract_vec_f64(parameters, key)? {
+            return Ok(Some(value));
+        }
+    }
+    Ok(None)
+}
+
+fn require_first_vec_f64(parameters: &Bound<'_, PyDict>, keys: &[&str]) -> PyResult<Vec<f64>> {
+    extract_first_vec_f64(parameters, keys)?
+        .ok_or_else(|| PyValueError::new_err(format!("{} is required", keys.join(" or "))))
+}
+
+fn require_first_f64(parameters: &Bound<'_, PyDict>, keys: &[&str]) -> PyResult<f64> {
+    for key in keys {
+        if let Some(value) = extract_f64(parameters, key)? {
+            return Ok(value);
+        }
+    }
+    Err(PyValueError::new_err(format!(
+        "{} is required",
+        keys.join(" or ")
+    )))
+}
+
+fn require_first_usize(parameters: &Bound<'_, PyDict>, keys: &[&str]) -> PyResult<usize> {
+    for key in keys {
+        if let Some(value) = extract_usize(parameters, key)? {
+            return Ok(value);
+        }
+    }
+    Err(PyValueError::new_err(format!(
+        "{} is required",
+        keys.join(" or ")
+    )))
+}
+
+fn require_pairs(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Vec<(f64, f64)>> {
+    extract_pairs(parameters, key)?
+        .ok_or_else(|| PyValueError::new_err(format!("{key} is required")))
+}
+
+fn require_first_pairs(parameters: &Bound<'_, PyDict>, keys: &[&str]) -> PyResult<Vec<(f64, f64)>> {
+    for key in keys {
+        if let Some(value) = extract_pairs(parameters, key)? {
+            return Ok(value);
+        }
+    }
+    Err(PyValueError::new_err(format!(
+        "{} is required",
+        keys.join(" or ")
+    )))
 }
 
 fn extract_calibration(parameters: &Bound<'_, PyDict>) -> PyResult<Option<Vec<[f64; 2]>>> {

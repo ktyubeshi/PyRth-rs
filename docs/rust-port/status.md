@@ -90,7 +90,20 @@ implementation remains the reference implementation.
     time_size)`
   - `bootstrap_theoretical(resistance, capacitance, time_start, time_end,
     time_size, repetitions, noise_std, seed=0)`
+  - `optimize_rc(data, initial_resistance, initial_capacitance,
+    lower_resistance, lower_capacitance, upper_resistance,
+    upper_capacitance, ...)`
+  - `predict_temperature_response(impulse_response, power_data,
+    lin_sampling_period=1.0)`
   - `Evaluation().standard_module({"data": ...})`
+  - `Evaluation().standard(...)` and `Evaluation().standard_module_set(...)`
+    as thin aliases over `standard_module`
+  - `Evaluation().theoretical({...})`, `Evaluation().bootstrap({...})`,
+    `Evaluation().optimization({...})`, and
+    `Evaluation().temperature_prediction({...})` as dict-parameter facades
+    over the module-level PyO3 helpers
+  - `Evaluation().comparison(reference, candidate)` for two PyO3 result dicts
+    or two standard-evaluation parameter dicts
   - `Evaluation().standard_module({...})` with `input_mode="t3ster"` and
     `infile`/`infile_pwr`/`infile_tco` or `input`/`t3ster_power`/
     `t3ster_calibration`
@@ -142,11 +155,11 @@ Lanczos Cauer coverage currently checks:
   `StructureFunction` objects.
 - Adaptive deconvolution is a minimal deterministic sparse implementation, not
   full Python adaptive parity.
-- MPFR structure methods and full Python optimization parity are not ported.
-  Rust now has a small f64 Foster rational assembly and poly-long helper under
-  `network` for follow-on MPFR work, but `evaluate` still reports `sobhy`,
-  `khatwani`, `boor_golub`, and `polylong` as unsupported rather than
-  presenting finite-precision scaffolding as Python MPFR parity.
+- MPFR structure methods and full Python optimization parity are only partly
+  ported.  With the non-default `mpfr` Cargo feature, `polylong` now routes
+  through a `rug::Float` Foster rational/poly-long conversion using
+  `EvaluationParams.precision`; without that feature it remains unsupported.
+  `sobhy`, `khatwani`, and `boor_golub` are still unsupported.
 - Bootstrap and comparison currently cover core numerical helpers only; the
   wider Python module orchestration and exporter parity are not ported.
 - Temperature prediction currently supports standard-evaluation impulse

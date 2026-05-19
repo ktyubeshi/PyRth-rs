@@ -162,8 +162,11 @@ Goal:
 
 ### I. MPFR Structure Methods
 
-Status: design investigated; minimal f64 rational/poly-long scaffolding added
-under `crates/pyrth-core/src/network` without wiring it into `evaluate`.
+Status: first feature-gated step implemented.  `rug` is an optional dependency
+behind the non-default `mpfr` feature, and `StructureMethod::PolyLong` is wired
+to a `rug::Float` poly-long conversion only when that feature is enabled.
+Windows MSVC cannot currently build `gmp-mpfr-sys`, so MPFR verification needs
+a supported GNU/Linux or Windows GNU toolchain.
 
 Owned paths:
 
@@ -178,8 +181,9 @@ Goal:
 - Port Python `transient_mpfr_utils.py` methods (`polylong`, `sobhy`,
   `khatwani`, `boor_golub`) without mislabeling Lanczos or f64 scaffolding as
   MPFR-equivalent output.
-- Decide separately whether to add `rug`/`gmp-mpfr-sys`, a feature-gated MPFR
-  implementation, or a documented finite-precision mode.
+- Continue from the feature-gated `polylong` path by porting the remaining
+  MPFR methods and adding parity coverage on a toolchain supported by
+  `gmp-mpfr-sys`.
 
 ## Landing Rules
 
