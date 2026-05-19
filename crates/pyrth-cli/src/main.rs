@@ -22,6 +22,15 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut params = EvaluationParams::default();
     params.only_make_z = args.only_make_z;
     params.calc_struc = !args.no_structure;
+    if let Some(log_time_size) = args.log_time_size {
+        params.log_time_size = log_time_size;
+    }
+    if let Some(bay_steps) = args.bay_steps {
+        params.bay_steps = bay_steps;
+    }
+    if let Some(blockwise_sum_width) = args.blockwise_sum_width {
+        params.blockwise_sum_width = blockwise_sum_width;
+    }
 
     let result = evaluate(input, &params)?;
     export_csv(&result, &args.output_dir)?;
@@ -34,6 +43,9 @@ struct CliArgs {
     output_dir: PathBuf,
     only_make_z: bool,
     no_structure: bool,
+    log_time_size: Option<usize>,
+    bay_steps: Option<usize>,
+    blockwise_sum_width: Option<usize>,
 }
 
 impl CliArgs {
@@ -42,6 +54,9 @@ impl CliArgs {
         let mut output_dir = None;
         let mut only_make_z = false;
         let mut no_structure = false;
+        let mut log_time_size = None;
+        let mut bay_steps = None;
+        let mut blockwise_sum_width = None;
 
         let mut args = args.peekable();
         while let Some(arg) = args.next() {
@@ -54,6 +69,14 @@ impl CliArgs {
                 "--output" | "-o" => output_dir = args.next().map(PathBuf::from),
                 "--only-make-z" => only_make_z = true,
                 "--no-structure" => no_structure = true,
+                "--log-time-size" => {
+                    log_time_size = Some(parse_next_usize(&mut args, "--log-time-size")?)
+                }
+                "--bay-steps" => bay_steps = Some(parse_next_usize(&mut args, "--bay-steps")?),
+                "--blockwise-sum-width" => {
+                    blockwise_sum_width =
+                        Some(parse_next_usize(&mut args, "--blockwise-sum-width")?)
+                }
                 _ if input.is_none() => input = Some(PathBuf::from(arg)),
                 _ if output_dir.is_none() => output_dir = Some(PathBuf::from(arg)),
                 _ => return Err(format!("unknown argument: {arg}").into()),
@@ -65,12 +88,29 @@ impl CliArgs {
             output_dir: output_dir.unwrap_or_else(|| PathBuf::from("output/rust-cli")),
             only_make_z,
             no_structure,
+            log_time_size,
+            bay_steps,
+            blockwise_sum_width,
         })
     }
 }
 
 fn print_usage() {
-    println!("Usage: pyrth-cli --input <path> --output <dir> [--only-make-z] [--no-structure]");
+    println!(
+        "Usage: pyrth-cli --input <path> --output <dir> [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>]"
+    );
+}
+
+fn parse_next_usize(
+    args: &mut std::iter::Peekable<impl Iterator<Item = String>>,
+    flag: &str,
+) -> Result<usize, Box<dyn Error>> {
+    let value = args
+        .next()
+        .ok_or_else(|| format!("missing value for {flag}"))?;
+    value
+        .parse::<usize>()
+        .map_err(|err| format!("invalid value for {flag}: {value} ({err})").into())
 }
 
 fn read_two_column_data(path: &Path) -> Result<TransientInput, Box<dyn Error>> {
