@@ -31,6 +31,10 @@ impl Evaluation {
         let input_mode = extract_string(parameters, "input_mode")?;
         let deconv_mode =
             extract_string(parameters, "deconv_mode")?.or(extract_string(parameters, "deconv")?);
+        let filter_name =
+            extract_string(parameters, "filter_name")?.or(extract_string(parameters, "filter")?);
+        let filter_range = extract_f64(parameters, "filter_range")?;
+        let filter_parameter = extract_f64(parameters, "filter_parameter")?;
         let log_time_size = extract_usize(parameters, "log_time_size")?;
         let bay_steps = extract_usize(parameters, "bay_steps")?;
         let blockwise_sum_width = extract_usize(parameters, "blockwise_sum_width")?;
@@ -53,6 +57,9 @@ impl Evaluation {
             EvalOverrides {
                 input_mode,
                 deconv_mode,
+                filter_name,
+                filter_range,
+                filter_parameter,
                 only_make_z,
                 calc_struc,
                 log_time_size,
@@ -89,6 +96,9 @@ fn evaluate_impedance(
         EvalOverrides {
             input_mode: None,
             deconv_mode: None,
+            filter_name: None,
+            filter_range: None,
+            filter_parameter: None,
             only_make_z,
             calc_struc,
             log_time_size: None,
@@ -113,6 +123,9 @@ fn evaluate_impedance(
 struct EvalOverrides {
     input_mode: Option<String>,
     deconv_mode: Option<String>,
+    filter_name: Option<String>,
+    filter_range: Option<f64>,
+    filter_parameter: Option<f64>,
     only_make_z: bool,
     calc_struc: bool,
     log_time_size: Option<usize>,
@@ -148,6 +161,16 @@ fn evaluate_impedance_with_params(
     if let Some(deconv_mode) = overrides.deconv_mode {
         params.deconv_mode = pyrth_core::DeconvMode::from_label(&deconv_mode)
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    }
+    if let Some(filter_name) = overrides.filter_name {
+        params.filter_name = pyrth_core::FourierFilter::from_label(&filter_name)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    }
+    if let Some(filter_range) = overrides.filter_range {
+        params.filter_range = filter_range;
+    }
+    if let Some(filter_parameter) = overrides.filter_parameter {
+        params.filter_parameter = filter_parameter;
     }
     params.only_make_z = overrides.only_make_z;
     params.calc_struc = overrides.calc_struc;

@@ -46,6 +46,8 @@ def main() -> None:
             "data": TEMP_DATA,
             "input_mode": "temp",
             "deconv_mode": "fourier",
+            "filter_name": "rectangular",
+            "filter_range": 0.6,
             "only_make_z": True,
             "power_step": 2.0,
             "temp_0_avg_range": (0, 1),

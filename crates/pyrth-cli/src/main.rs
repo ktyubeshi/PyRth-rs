@@ -6,7 +6,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use pyrth_core::{evaluate, export_csv, DeconvMode, EvaluationParams, InputMode, TransientInput};
+use pyrth_core::{
+    evaluate, export_csv, DeconvMode, EvaluationParams, FourierFilter, InputMode, TransientInput,
+};
 
 fn main() {
     if let Err(err) = run() {
@@ -22,6 +24,13 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut params = EvaluationParams::default();
     params.input_mode = args.input_mode;
     params.deconv_mode = args.deconv_mode;
+    params.filter_name = args.filter_name;
+    if let Some(filter_range) = args.filter_range {
+        params.filter_range = filter_range;
+    }
+    if let Some(filter_parameter) = args.filter_parameter {
+        params.filter_parameter = filter_parameter;
+    }
     params.only_make_z = args.only_make_z;
     params.calc_struc = !args.no_structure;
     if let Some(log_time_size) = args.log_time_size {
@@ -79,6 +88,9 @@ struct CliArgs {
     output_dir: PathBuf,
     input_mode: InputMode,
     deconv_mode: DeconvMode,
+    filter_name: FourierFilter,
+    filter_range: Option<f64>,
+    filter_parameter: Option<f64>,
     only_make_z: bool,
     no_structure: bool,
     log_time_size: Option<usize>,
@@ -106,6 +118,9 @@ impl CliArgs {
         let mut output_dir = None;
         let mut input_mode = InputMode::Impedance;
         let mut deconv_mode = DeconvMode::Bayesian;
+        let mut filter_name = FourierFilter::Hann;
+        let mut filter_range = None;
+        let mut filter_parameter = None;
         let mut only_make_z = false;
         let mut no_structure = false;
         let mut log_time_size = None;
@@ -158,6 +173,16 @@ impl CliArgs {
                     let value = args.next().ok_or("missing value for --deconv")?;
                     deconv_mode = DeconvMode::from_label(&value)?;
                 }
+                "--filter-name" | "--filter" => {
+                    let value = args.next().ok_or("missing value for --filter-name")?;
+                    filter_name = FourierFilter::from_label(&value)?;
+                }
+                "--filter-range" => {
+                    filter_range = Some(parse_next_f64(&mut args, "--filter-range")?)
+                }
+                "--filter-parameter" => {
+                    filter_parameter = Some(parse_next_f64(&mut args, "--filter-parameter")?)
+                }
                 "--power-step" => power_step = Some(parse_next_f64(&mut args, "--power-step")?),
                 "--power-scale-factor" => {
                     power_scale_factor = Some(parse_next_f64(&mut args, "--power-scale-factor")?)
@@ -197,6 +222,9 @@ impl CliArgs {
             output_dir: output_dir.unwrap_or_else(|| PathBuf::from("output/rust-cli")),
             input_mode,
             deconv_mode,
+            filter_name,
+            filter_range,
+            filter_parameter,
             only_make_z,
             no_structure,
             log_time_size,
@@ -222,7 +250,7 @@ impl CliArgs {
 
 fn print_usage() {
     println!(
-        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt] [--deconv bayesian|fourier] [--power-step <w>] [--power-scale-factor <x>] [--optical-power <w>] [--is-heating] [--calibration <path>] [--kfac-fit-deg <n>] [--data-cut-lower <n>] [--data-cut-upper <n>] [--temp-zero-range <start:end>] [--extrapolate --lower-fit-limit <t> --upper-fit-limit <t>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
+        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt] [--deconv bayesian|fourier] [--filter-name hann|rectangular|gauss|fermi|nuttall|blackman_nuttall|blackman_harris] [--filter-range <x>] [--filter-parameter <x>] [--power-step <w>] [--power-scale-factor <x>] [--optical-power <w>] [--is-heating] [--calibration <path>] [--kfac-fit-deg <n>] [--data-cut-lower <n>] [--data-cut-upper <n>] [--temp-zero-range <start:end>] [--extrapolate --lower-fit-limit <t> --upper-fit-limit <t>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
     );
 }
 
