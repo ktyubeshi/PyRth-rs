@@ -100,6 +100,8 @@ implementation remains the reference implementation.
   - `Evaluation().standard_module({"data": ...})`
   - `Evaluation().standard(...)` and `Evaluation().standard_module_set(...)`
     as thin aliases over `standard_module`
+  - `Evaluation().module_labels()` and `Evaluation().module_count()` for the
+    current minimal module registry, including duplicate-label suffixing
   - `Evaluation().save_as_csv(output_dir="output/csv")` and `save_all(...)`
     for the last standard-evaluation result through the core CSV exporter
   - `Evaluation().theoretical({...})`, `Evaluation().bootstrap({...})`,
@@ -170,9 +172,10 @@ Lanczos Cauer coverage currently checks:
 - PyO3 returns plain Python dictionaries rather than existing Python
   `StructureFunction` objects.  The current compatibility layer exposes the
   high-level `Evaluation` methods as dict-parameter facades, but it does not
-  preserve Python object attributes, `data_handlers`, labels, or module
-  registration.  `Evaluation` now keeps the last standard-evaluation result for
-  `save_as_csv(...)`, but that is only a first CSV-export compatibility slice.
+  preserve Python object attributes or `data_handlers`.  `Evaluation` now keeps
+  a minimal label-to-result module registry and the last standard-evaluation
+  result for `save_as_csv(...)`, but that is only a first CSV-export
+  compatibility slice.
 - Adaptive deconvolution is a minimal deterministic sparse implementation, not
   full Python adaptive parity.
 - MPFR structure methods and full Python optimization parity are only partly
@@ -180,7 +183,10 @@ Lanczos Cauer coverage currently checks:
   through a `rug::Float` Foster rational/poly-long conversion using
   `EvaluationParams.precision`; `sobhy` and `khatwani` are also wired through
   feature-gated MPFR J-fraction helpers.  Without that feature they remain
-  unsupported.  `boor_golub` is still unsupported.
+  unsupported.  A raw feature-gated Boor-Golub MPFR helper exists for parity
+  investigation, but `boor_golub` is still unsupported in `evaluate` because
+  the Python raw output can include a zero trailing resistance that does not
+  fit the current `CauerNetwork` contract.
 - Bootstrap and comparison currently cover core numerical helpers and thin
   `Evaluation` dict facades only.  They do not port Python's wider
   `bootstrap_*`/`comparison_module` orchestration, iterable module-set handling,
