@@ -14,6 +14,7 @@ pub mod export;
 pub mod network;
 pub mod preprocess;
 pub mod t3ster;
+pub mod theoretical;
 
 pub use config::{DeconvMode, EvaluationParams, FourierFilter, InputMode, StructureMethod};
 pub use data::{ImpedanceData, TransientInput};
@@ -30,3 +31,4 @@ pub use t3ster::{
     parse_t3ster_calibration_text, parse_t3ster_power_step, parse_t3ster_raw_text,
     t3ster_raw_to_temperature_input, T3sterRaw,
 };
+pub use theoretical::{theoretical_impedance_input, TheoreticalModel};
