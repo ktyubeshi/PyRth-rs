@@ -100,6 +100,36 @@ def main() -> None:
     assert len(bootstrap["time_spectrum_mean"]) > 0
     assert all(math.isfinite(value) for value in bootstrap["time_spectrum_mean"])
 
+    target = pyrth_py.theoretical_impedance([1.0, 3.0], [0.4, 2.0], 1e-3, 1e2, 32)
+    optimized = pyrth_py.optimize_rc(
+        list(zip(target["time"], target["impedance"])),
+        [0.75, 3.5],
+        [0.65, 1.5],
+        [0.5, 2.0],
+        [0.2, 1.0],
+        [1.5, 4.0],
+        [1.0, 3.0],
+        max_iter=8,
+        initial_step=0.25,
+        min_step=1e-3,
+    )
+    assert sorted(optimized) == ["capacitance", "iterations", "residual_norm", "resistance"]
+    assert len(optimized["resistance"]) == 2
+    assert len(optimized["capacitance"]) == 2
+    assert optimized["iterations"] > 0
+    assert math.isfinite(optimized["residual_norm"])
+
+    prediction_input = pyrth_py.theoretical_impedance([1.0], [0.5], 1e-6, 1e-2, 80)
+    predicted = pyrth_py.predict_temperature_response(
+        list(zip(prediction_input["time"], prediction_input["impedance"])),
+        [(0.0, 0.0), (0.02, 1.0), (0.04, 0.5)],
+        lin_sampling_period=1e-3,
+    )
+    assert sorted(predicted) == ["temperature", "time"]
+    assert len(predicted["time"]) == len(predicted["temperature"])
+    assert len(predicted["time"]) > 0
+    assert all(math.isfinite(value) for value in predicted["temperature"])
+
     temp_module = evaluation.standard_module(
         {
             "data": TEMP_DATA,

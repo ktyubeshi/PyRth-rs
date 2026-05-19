@@ -79,6 +79,11 @@ implementation remains the reference implementation.
   - `--upper-fit-limit`
   - `--t3ster-power`
   - `--t3ster-calibration`
+  - `--theoretical-resistance`
+  - `--theoretical-capacitance`
+  - `--time-start`
+  - `--time-end`
+  - `--time-size`
 - Minimal PyO3 entrypoint:
   - `evaluate_impedance(data, only_make_z=False, calc_struc=True)`
   - `theoretical_impedance(resistance, capacitance, time_start, time_end,
@@ -164,6 +169,7 @@ cargo run -p pyrth-cli -- --input target\tmp\volt-input.csv --output target\tmp\
 cargo run -p pyrth-cli -- --input target\tmp\temp-extrapolate.csv --output target\tmp\cli-temp-extrapolate --input-mode temp --extrapolate --lower-fit-limit 4 --upper-fit-limit 16 --only-make-z
 cargo run -p pyrth-cli -- --input tests\data\MOSFET_tim.txt --output target\tmp\cli-fourier-filter --deconv fourier --filter-name rectangular --filter-range 0.6 --log-time-size 12 --min-index 1 --minimum-window-size 2 --no-structure
 cargo run -p pyrth-cli -- --input tests\data\t3ster\T25_I-m5m-I-h600m_100s.raw --input-mode t3ster --t3ster-power tests\data\t3ster\T25_I-m5m-I-h600m_100s.pwr --t3ster-calibration tests\data\t3ster\calib.tco --output target\tmp\cli-t3ster --only-make-z
+cargo run -p pyrth-cli -- --theoretical-resistance 1,2 --theoretical-capacitance 0.5,1.5 --time-start 1e-6 --time-end 1e-2 --time-size 32 --output target\tmp\cli-theoretical --only-make-z
 uvx maturin develop --manifest-path crates/pyrth-py/Cargo.toml
 .\.venv\Scripts\python.exe crates\pyrth-py\tests\smoke.py
 cargo test -p pyrth-py

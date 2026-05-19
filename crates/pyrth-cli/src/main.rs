@@ -8,8 +8,8 @@ use std::{
 
 use pyrth_core::{
     evaluate, export_csv, parse_t3ster_calibration_text, parse_t3ster_power_step,
-    parse_t3ster_raw_text, t3ster_raw_to_temperature_input, DeconvMode, EvaluationParams,
-    FourierFilter, InputMode, StructureMethod, TransientInput,
+    parse_t3ster_raw_text, t3ster_raw_to_temperature_input, theoretical_impedance_input,
+    DeconvMode, EvaluationParams, FourierFilter, InputMode, StructureMethod, TransientInput,
 };
 
 fn main() {
@@ -26,12 +26,16 @@ fn run() -> Result<(), Box<dyn Error>> {
     if let Some(kfac_fit_deg) = args.kfac_fit_deg {
         params.kfac_fit_deg = kfac_fit_deg;
     }
-    let input = if args.input_mode == InputMode::T3ster {
+    let input = if args.has_theoretical_model() {
+        params.input_mode = InputMode::Impedance;
+        build_theoretical_input(&args)?
+    } else if args.input_mode == InputMode::T3ster {
         params.input_mode = InputMode::Temperature;
         read_t3ster_input(&args, &mut params)?
     } else {
         params.input_mode = args.input_mode;
-        read_two_column_data(&args.input)?
+        let input = args.input.as_ref().ok_or("missing input path")?;
+        read_two_column_data(input)?
     };
     params.deconv_mode = args.deconv_mode;
     params.structure_method = args.structure_method;
@@ -107,7 +111,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 }
 
 struct CliArgs {
-    input: PathBuf,
+    input: Option<PathBuf>,
     output_dir: PathBuf,
     input_mode: InputMode,
     deconv_mode: DeconvMode,
@@ -141,6 +145,11 @@ struct CliArgs {
     extrapolate: bool,
     lower_fit_limit: Option<f64>,
     upper_fit_limit: Option<f64>,
+    theoretical_resistance: Option<Vec<f64>>,
+    theoretical_capacitance: Option<Vec<f64>>,
+    time_start: Option<f64>,
+    time_end: Option<f64>,
+    time_size: Option<usize>,
 }
 
 impl CliArgs {
@@ -179,6 +188,11 @@ impl CliArgs {
         let mut extrapolate = false;
         let mut lower_fit_limit = None;
         let mut upper_fit_limit = None;
+        let mut theoretical_resistance = None;
+        let mut theoretical_capacitance = None;
+        let mut time_start = None;
+        let mut time_end = None;
+        let mut time_size = None;
 
         let mut args = args.peekable();
         while let Some(arg) = args.next() {
@@ -266,14 +280,37 @@ impl CliArgs {
                 "--upper-fit-limit" => {
                     upper_fit_limit = Some(parse_next_f64(&mut args, "--upper-fit-limit")?)
                 }
+                "--theoretical-resistance" => {
+                    theoretical_resistance =
+                        Some(parse_next_f64_list(&mut args, "--theoretical-resistance")?)
+                }
+                "--theoretical-capacitance" => {
+                    theoretical_capacitance =
+                        Some(parse_next_f64_list(&mut args, "--theoretical-capacitance")?)
+                }
+                "--time-start" => time_start = Some(parse_next_f64(&mut args, "--time-start")?),
+                "--time-end" => time_end = Some(parse_next_f64(&mut args, "--time-end")?),
+                "--time-size" => time_size = Some(parse_next_usize(&mut args, "--time-size")?),
                 _ if input.is_none() => input = Some(PathBuf::from(arg)),
                 _ if output_dir.is_none() => output_dir = Some(PathBuf::from(arg)),
                 _ => return Err(format!("unknown argument: {arg}").into()),
             }
         }
 
+        validate_theoretical_args(
+            theoretical_resistance.as_deref(),
+            theoretical_capacitance.as_deref(),
+            time_start,
+            time_end,
+            time_size,
+        )?;
+
+        if theoretical_resistance.is_none() && input.is_none() {
+            return Err("missing input path".into());
+        }
+
         Ok(Self {
-            input: input.ok_or("missing input path")?,
+            input,
             output_dir: output_dir.unwrap_or_else(|| PathBuf::from("output/rust-cli")),
             input_mode,
             deconv_mode,
@@ -307,13 +344,22 @@ impl CliArgs {
             extrapolate,
             lower_fit_limit,
             upper_fit_limit,
+            theoretical_resistance,
+            theoretical_capacitance,
+            time_start,
+            time_end,
+            time_size,
         })
+    }
+
+    fn has_theoretical_model(&self) -> bool {
+        self.theoretical_resistance.is_some()
     }
 }
 
 fn print_usage() {
     println!(
-        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt|t3ster] [--deconv bayesian|fourier|lasso|adaptive] [--structure-method lanczos|sobhy|boor_golub|khatwani|polylong] [--precision <bits>] [--filter-name hann|rectangular|gauss|fermi|nuttall|blackman_nuttall|blackman_harris] [--filter-range <x>] [--filter-parameter <x>] [--power-step <w>] [--power-scale-factor <x>] [--optical-power <w>] [--is-heating] [--calibration <path>] [--t3ster-power <path>] [--t3ster-calibration <path>] [--kfac-fit-deg <n>] [--data-cut-lower <n>] [--data-cut-upper <n>] [--temp-zero-range <start:end>] [--extrapolate --lower-fit-limit <t> --upper-fit-limit <t>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>] [--lasso-alpha <x>] [--lasso-max-iter <n>] [--lasso-tol <x>] [--timespec-interpolate-factor <x>]"
+        "Usage: pyrth-cli [--input <path>] --output <dir> [--theoretical-resistance <r1,r2>] [--theoretical-capacitance <c1,c2>] [--time-start <t>] [--time-end <t>] [--time-size <n>] [--input-mode impedance|temp|volt|t3ster] [--deconv bayesian|fourier|lasso|adaptive] [--structure-method lanczos|sobhy|boor_golub|khatwani|polylong] [--precision <bits>] [--filter-name hann|rectangular|gauss|fermi|nuttall|blackman_nuttall|blackman_harris] [--filter-range <x>] [--filter-parameter <x>] [--power-step <w>] [--power-scale-factor <x>] [--optical-power <w>] [--is-heating] [--calibration <path>] [--t3ster-power <path>] [--t3ster-calibration <path>] [--kfac-fit-deg <n>] [--data-cut-lower <n>] [--data-cut-upper <n>] [--temp-zero-range <start:end>] [--extrapolate --lower-fit-limit <t> --upper-fit-limit <t>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>] [--lasso-alpha <x>] [--lasso-max-iter <n>] [--lasso-tol <x>] [--timespec-interpolate-factor <x>]"
     );
 }
 
@@ -341,6 +387,33 @@ fn parse_next_f64(
         .map_err(|err| format!("invalid value for {flag}: {value} ({err})").into())
 }
 
+fn parse_next_f64_list(
+    args: &mut std::iter::Peekable<impl Iterator<Item = String>>,
+    flag: &str,
+) -> Result<Vec<f64>, Box<dyn Error>> {
+    let value = args
+        .next()
+        .ok_or_else(|| format!("missing value for {flag}"))?;
+    let values = value
+        .split(',')
+        .map(str::trim)
+        .map(|part| {
+            if part.is_empty() {
+                Err(format!("invalid value for {flag}: empty list item").into())
+            } else {
+                part.parse::<f64>()
+                    .map_err(|err| format!("invalid value for {flag}: {part} ({err})").into())
+            }
+        })
+        .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+
+    if values.is_empty() {
+        return Err(format!("invalid value for {flag}: expected at least one number").into());
+    }
+
+    Ok(values)
+}
+
 fn parse_next_range(
     args: &mut std::iter::Peekable<impl Iterator<Item = String>>,
     flag: &str,
@@ -352,6 +425,59 @@ fn parse_next_range(
         .split_once(':')
         .ok_or_else(|| format!("invalid value for {flag}: expected start:end"))?;
     Ok((start.parse::<usize>()?, end.parse::<usize>()?))
+}
+
+fn validate_theoretical_args(
+    theoretical_resistance: Option<&[f64]>,
+    theoretical_capacitance: Option<&[f64]>,
+    time_start: Option<f64>,
+    time_end: Option<f64>,
+    time_size: Option<usize>,
+) -> Result<(), Box<dyn Error>> {
+    let has_resistance = theoretical_resistance.is_some();
+    let has_capacitance = theoretical_capacitance.is_some();
+    let has_time = time_start.is_some() || time_end.is_some() || time_size.is_some();
+
+    if !has_resistance && !has_capacitance && !has_time {
+        return Ok(());
+    }
+    if !has_resistance || !has_capacitance {
+        return Err(
+            "--theoretical-resistance and --theoretical-capacitance must be specified together"
+                .into(),
+        );
+    }
+    if time_start.is_none() || time_end.is_none() || time_size.is_none() {
+        return Err(
+            "--time-start, --time-end, and --time-size are required for theoretical input".into(),
+        );
+    }
+
+    let resistance_len = theoretical_resistance.expect("checked above").len();
+    let capacitance_len = theoretical_capacitance.expect("checked above").len();
+    if resistance_len != capacitance_len {
+        return Err(format!(
+            "theoretical resistance/capacitance length mismatch: {resistance_len} != {capacitance_len}"
+        )
+        .into());
+    }
+
+    Ok(())
+}
+
+fn build_theoretical_input(args: &CliArgs) -> Result<TransientInput, Box<dyn Error>> {
+    theoretical_impedance_input(
+        args.theoretical_resistance
+            .as_deref()
+            .ok_or("missing --theoretical-resistance")?,
+        args.theoretical_capacitance
+            .as_deref()
+            .ok_or("missing --theoretical-capacitance")?,
+        args.time_start.ok_or("missing --time-start")?,
+        args.time_end.ok_or("missing --time-end")?,
+        args.time_size.ok_or("missing --time-size")?,
+    )
+    .map_err(Into::into)
 }
 
 fn read_two_column_data(path: &Path) -> Result<TransientInput, Box<dyn Error>> {
@@ -406,7 +532,8 @@ fn read_t3ster_input(
     args: &CliArgs,
     params: &mut EvaluationParams,
 ) -> Result<TransientInput, Box<dyn Error>> {
-    let raw = parse_t3ster_raw_text(&fs::read_to_string(&args.input)?)?;
+    let input = args.input.as_ref().ok_or("missing input path")?;
+    let raw = parse_t3ster_raw_text(&fs::read_to_string(input)?)?;
     let calibration_path = args
         .t3ster_calibration
         .as_ref()

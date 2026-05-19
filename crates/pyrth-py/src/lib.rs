@@ -287,6 +287,93 @@ fn bootstrap_theoretical(
     Ok(output.into())
 }
 
+#[pyfunction]
+#[pyo3(signature = (
+    data,
+    initial_resistance,
+    initial_capacitance,
+    lower_resistance,
+    lower_capacitance,
+    upper_resistance,
+    upper_capacitance,
+    max_iter=128,
+    initial_step=0.1,
+    min_step=1e-6,
+    shrink_factor=0.5
+))]
+fn optimize_rc(
+    py: Python<'_>,
+    data: Vec<(f64, f64)>,
+    initial_resistance: Vec<f64>,
+    initial_capacitance: Vec<f64>,
+    lower_resistance: Vec<f64>,
+    lower_capacitance: Vec<f64>,
+    upper_resistance: Vec<f64>,
+    upper_capacitance: Vec<f64>,
+    max_iter: usize,
+    initial_step: f64,
+    min_step: f64,
+    shrink_factor: f64,
+) -> PyResult<PyObject> {
+    let input = pyrth_core::TransientInput::from_pairs(data)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let initial = pyrth_core::RcParameters::from_slices(&initial_resistance, &initial_capacitance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let lower = pyrth_core::RcParameters::from_slices(&lower_resistance, &lower_capacitance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let upper = pyrth_core::RcParameters::from_slices(&upper_resistance, &upper_capacitance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let bounds = pyrth_core::RcParameterBounds::new(lower, upper)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let config = pyrth_core::OptimizationConfig {
+        max_iter,
+        initial_step,
+        min_step,
+        shrink_factor,
+    };
+
+    let result = pyrth_core::optimize_rc_parameters(&input, &initial, &bounds, config)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let output = PyDict::new(py);
+    output.set_item("resistance", result.parameters.resistance.to_vec())?;
+    output.set_item("capacitance", result.parameters.capacitance.to_vec())?;
+    output.set_item("residual_norm", result.residual_norm)?;
+    output.set_item("iterations", result.iterations)?;
+    Ok(output.into())
+}
+
+#[pyfunction]
+#[pyo3(signature = (impulse_response, power_data, lin_sampling_period=1.0))]
+fn predict_temperature_response(
+    py: Python<'_>,
+    impulse_response: Vec<(f64, f64)>,
+    power_data: Vec<(f64, f64)>,
+    lin_sampling_period: f64,
+) -> PyResult<PyObject> {
+    let input = pyrth_core::TransientInput::from_pairs(impulse_response)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let power = transient_input_from_pairs_unchecked(power_data);
+    let mut params = pyrth_core::EvaluationParams::default();
+    params.calc_struc = false;
+
+    let result = pyrth_core::predict_temperature(input, power, &params, lin_sampling_period)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let output = PyDict::new(py);
+    output.set_item("time", result.lin_time.to_vec())?;
+    output.set_item("temperature", result.predicted_temperature.to_vec())?;
+    Ok(output.into())
+}
+
+fn transient_input_from_pairs_unchecked(pairs: Vec<(f64, f64)>) -> pyrth_core::TransientInput {
+    let (time, value): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
+    pyrth_core::TransientInput {
+        time: time.into(),
+        value: value.into(),
+    }
+}
+
 struct EvalOverrides {
     input_mode: Option<String>,
     deconv_mode: Option<String>,
@@ -511,6 +598,8 @@ fn pyrth_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(evaluate_impedance, m)?)?;
     m.add_function(wrap_pyfunction!(theoretical_impedance, m)?)?;
     m.add_function(wrap_pyfunction!(bootstrap_theoretical, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_rc, m)?)?;
+    m.add_function(wrap_pyfunction!(predict_temperature_response, m)?)?;
     Ok(())
 }
 
