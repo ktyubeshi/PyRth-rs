@@ -21,9 +21,15 @@ implementation remains the reference implementation.
     temperature conversion
   - log-time derivative preprocessing
   - Bayesian deconvolution
-  - Fourier deconvolution with the default unity filter path
+  - Fourier deconvolution with `hann`, `rectangular`, `gauss`, `fermi`,
+    `nuttall`, `blackman_nuttall`, and `blackman_harris` filters
   - Foster network conversion
   - Lanczos Cauer conversion
+- T3Ster text helpers:
+  - legacy `.raw` header/data parser
+  - `.pwr` power-step parser
+  - `.tco` calibration parser
+  - raw ADC to temperature input conversion
 - Core CSV export:
   - `impedance.csv`
   - `imp_deriv.csv`
@@ -46,6 +52,9 @@ implementation remains the reference implementation.
   - `--minimum-window-size`
   - `--input-mode`
   - `--deconv`
+  - `--filter-name`
+  - `--filter-range`
+  - `--filter-parameter`
   - `--power-step`
   - `--power-scale-factor`
   - `--optical-power`
@@ -58,15 +67,17 @@ implementation remains the reference implementation.
   - `--extrapolate`
   - `--lower-fit-limit`
   - `--upper-fit-limit`
+  - `--t3ster-power`
+  - `--t3ster-calibration`
 - Minimal PyO3 entrypoint:
   - `evaluate_impedance(data, only_make_z=False, calc_struc=True)`
   - `Evaluation().standard_module({"data": ...})`
   - `standard_module` accepts `input_mode`, `only_make_z`, `calc_struc`,
-    `deconv_mode`, `log_time_size`, `bay_steps`, `blockwise_sum_width`,
-    `power_step`, `power_scale_factor`, `optical_power`, `is_heating`,
-    `calibration`, `kfac_fit_deg`, `data_cut_lower`, `data_cut_upper`,
-    `temp_0_avg_range`, `extrapolate`, `lower_fit_limit`, and
-    `upper_fit_limit`
+    `deconv_mode`, `filter_name`, `filter_range`, `filter_parameter`,
+    `log_time_size`, `bay_steps`, `blockwise_sum_width`, `power_step`,
+    `power_scale_factor`, `optical_power`, `is_heating`, `calibration`,
+    `kfac_fit_deg`, `data_cut_lower`, `data_cut_upper`, `temp_0_avg_range`,
+    `extrapolate`, `lower_fit_limit`, and `upper_fit_limit`
 
 ## Golden Coverage
 
@@ -92,12 +103,12 @@ Lanczos Cauer coverage currently checks:
 - LED derivative golden equality is not enabled.  Its small-window settings
   hit near-ties in the adaptive estimator and currently diverge by window
   selection in a few positions.
-- CLI/PyO3 only support direct two-column inputs. T3Ster files are not ported.
+- PyO3 only supports direct two-column inputs. T3Ster file-path ingestion is
+  currently CLI-only.
 - PyO3 returns plain Python dictionaries rather than existing Python
   `StructureFunction` objects.
-- Fourier filtering options, Lasso, adaptive, MPFR structure methods,
-  optimization, bootstrap, comparison, and temperature prediction are not
-  ported.
+- Lasso, adaptive, MPFR structure methods, optimization, bootstrap,
+  comparison, and temperature prediction are not ported.
 - The next implementation work is split into non-overlapping `jj` slices in
   `docs/rust-port/parallel-plan.md`.
 
@@ -114,6 +125,8 @@ cargo run -p pyrth-cli -- --input target\tmp\cli-input.csv --output target\tmp\c
 cargo run -p pyrth-cli -- --input target\tmp\temp-input.csv --output target\tmp\cli-temp --input-mode temp --power-step 2 --temp-zero-range 0:1 --only-make-z
 cargo run -p pyrth-cli -- --input target\tmp\volt-input.csv --output target\tmp\cli-volt --input-mode volt --calibration target\tmp\calib.csv --kfac-fit-deg 1 --only-make-z
 cargo run -p pyrth-cli -- --input target\tmp\temp-extrapolate.csv --output target\tmp\cli-temp-extrapolate --input-mode temp --extrapolate --lower-fit-limit 4 --upper-fit-limit 16 --only-make-z
+cargo run -p pyrth-cli -- --input tests\data\MOSFET_tim.txt --output target\tmp\cli-fourier-filter --deconv fourier --filter-name rectangular --filter-range 0.6 --log-time-size 12 --min-index 1 --minimum-window-size 2 --no-structure
+cargo run -p pyrth-cli -- --input tests\data\t3ster\T25_I-m5m-I-h600m_100s.raw --input-mode t3ster --t3ster-power tests\data\t3ster\T25_I-m5m-I-h600m_100s.pwr --t3ster-calibration tests\data\t3ster\calib.tco --output target\tmp\cli-t3ster --only-make-z
 uvx maturin develop --manifest-path crates/pyrth-py/Cargo.toml
 .\.venv\Scripts\python.exe crates\pyrth-py\tests\smoke.py
 ```

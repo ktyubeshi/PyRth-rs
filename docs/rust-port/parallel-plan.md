@@ -15,7 +15,7 @@ review, test, and land independently.
 
 ### A. Fourier Deconvolution
 
-Status: implemented as a minimal unity-filter FFT path.
+Status: implemented with Python-compatible filter options.
 
 Owned paths:
 
@@ -72,6 +72,25 @@ Goal:
 
 - Keep the state of the parallel work understandable.
 - Record which gaps remain after each slice lands.
+
+### D. T3Ster Input
+
+Status: core text parsers and CLI `--input-mode t3ster` are implemented.
+PyO3 file-path ingestion is still pending.
+
+Owned paths:
+
+- `crates/pyrth-core/src/t3ster.rs`
+- `crates/pyrth-core/tests/preprocess.rs`
+- `crates/pyrth-cli/src/main.rs`
+- later: `crates/pyrth-py/src/lib.rs`
+
+Goal:
+
+- Convert legacy `.raw` ADC records plus `.pwr` and `.tco` companion files
+  into the existing temperature preprocessing path.
+- Keep file I/O at the CLI/PyO3 boundary and keep core parser functions
+  testable from strings.
 
 ## Landing Rules
 
