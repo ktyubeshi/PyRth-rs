@@ -100,6 +100,11 @@ impl PyStructureFunction {
         evaluation_result_keys(&self.result).len()
     }
 
+    fn __iter__(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let keys = PyList::new(py, evaluation_result_keys(&self.result))?;
+        Ok(keys.call_method0("__iter__")?.unbind())
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "StructureFunction(label={:?}, keys={:?})",
@@ -429,7 +434,7 @@ impl Evaluation {
         };
         let input = extract_transient_input(parameters, &mut overrides)?;
 
-        let (output, result) = evaluate_transient_input_with_result(py, input, overrides)?;
+        let (_output, result) = evaluate_transient_input_with_result(py, input, overrides)?;
         *self
             .last_result
             .write()
@@ -442,8 +447,17 @@ impl Evaluation {
             .as_ref()
             .cloned()
             .ok_or_else(|| PyValueError::new_err("failed to store Evaluation result state"))?;
-        self.register_module(label, result)?;
-        Ok(output)
+        let final_label = self.register_module(label, result.clone())?;
+        Ok(Py::new(
+            py,
+            PyStructureFunction {
+                label: final_label,
+                result,
+            },
+        )?
+        .into_bound(py)
+        .into_any()
+        .unbind())
     }
 
     fn module_labels(&self) -> PyResult<Vec<String>> {
@@ -1267,6 +1281,9 @@ fn evaluation_result_from_result_or_params(
     }
 
     let output = evaluation.standard_module(py, parameters)?;
+    if let Ok(module) = output.bind(py).extract::<PyRef<'_, PyStructureFunction>>() {
+        return Ok(module.result.clone());
+    }
     let output = output.bind(py).downcast::<PyDict>().map_err(|err| {
         PyValueError::new_err(format!(
             "comparison parameters did not evaluate to a dict: {err}"
