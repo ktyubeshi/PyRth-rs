@@ -154,6 +154,8 @@ Goal:
 - PyO3 `save_figures` exports simple SVG figures for every registered
   standard-evaluation module into per-label output directories, and `save_all`
   now returns both CSV and figure path dictionaries.
+- CLI `--figures-output` writes the same simple SVG figures next to the
+  existing CSV output path when requested.
 - PyO3 standard-evaluation methods now return minimal `StructureFunction`
   objects with dict-like read access rather than bare dictionaries.
 - PyO3 `StructureFunction` also exposes common Python-style array aliases for

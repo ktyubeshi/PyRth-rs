@@ -2,9 +2,8 @@ use approx::assert_relative_eq;
 use ndarray::array;
 #[cfg(all(feature = "mpfr", not(target_env = "msvc")))]
 use pyrth_core::network::{
-    boor_golub_cauer_mpfr_raw, cauer_from_foster_boor_golub_mpfr,
-    cauer_from_foster_khatwani_mpfr, cauer_from_foster_poly_long_mpfr,
-    cauer_from_foster_sobhy_mpfr,
+    boor_golub_cauer_mpfr_raw, cauer_from_foster_boor_golub_mpfr, cauer_from_foster_khatwani_mpfr,
+    cauer_from_foster_poly_long_mpfr, cauer_from_foster_sobhy_mpfr,
 };
 use pyrth_core::{
     error::PyrthError,
