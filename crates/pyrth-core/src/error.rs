@@ -16,6 +16,9 @@ pub enum PyrthError {
     #[error("input values must be finite")]
     InvalidValues,
 
+    #[error("time constant spectrum is empty after filtering")]
+    EmptySpectrum,
+
     #[error("unsupported input mode for this stage: {0}")]
     UnsupportedInputMode(String),
 

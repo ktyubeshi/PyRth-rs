@@ -50,6 +50,8 @@ struct GoldenReference {
     log_time_delta: f64,
     log_time_interp: Vec<f64>,
     log_time_pad: Vec<f64>,
+    therm_capa_fost: Vec<f64>,
+    therm_resist_fost: Vec<f64>,
     time_spec: Vec<f64>,
 }
 
@@ -121,6 +123,7 @@ fn impedance_and_derivative_match_python_golden() {
     ] {
         assert_derivative_matches(fixture_name);
         assert_time_spectrum_matches(fixture_name);
+        assert_foster_matches(fixture_name);
     }
 }
 
@@ -197,6 +200,25 @@ fn assert_time_spectrum_matches(fixture_name: &str) {
         &format!("{fixture_name}:time_spec"),
         time_spectrum,
         &fixture.reference.time_spec,
+        1e-8,
+        1e-6,
+    );
+}
+
+fn assert_foster_matches(fixture_name: &str) {
+    let (fixture, result) = evaluate_fixture(fixture_name);
+    let foster = result.foster.as_ref().unwrap();
+    assert_array_close_with_tolerance(
+        &format!("{fixture_name}:therm_resist_fost"),
+        &foster.resistance,
+        &fixture.reference.therm_resist_fost,
+        1e-8,
+        1e-6,
+    );
+    assert_array_close_with_tolerance(
+        &format!("{fixture_name}:therm_capa_fost"),
+        &foster.capacitance,
+        &fixture.reference.therm_capa_fost,
         1e-8,
         1e-6,
     );
