@@ -387,6 +387,31 @@ def main() -> None:
         predicted_from_optimization["temperature"], predicted_from_rc["temperature"]
     )
 
+    predicted_from_internal_optimization = evaluation.temperature_prediction(
+        {
+            "data": list(zip(prediction_input["time"], prediction_input["impedance"])),
+            "initial_resistance": [1.0],
+            "initial_capacitance": [0.5],
+            "lower_resistance": [1.0],
+            "lower_capacitance": [0.5],
+            "upper_resistance": [1.0],
+            "upper_capacitance": [0.5],
+            "max_iter": 1,
+            "initial_step": 0.1,
+            "min_step": 0.1,
+            "reference_time": prediction_input["time"],
+            "power_data": [(0.0, 0.0), (0.02, 1.0), (0.04, 0.5)],
+            "lin_sampling_period": 1e-3,
+        }
+    )
+    assert_close_list(
+        predicted_from_internal_optimization["time"], predicted_from_rc["time"]
+    )
+    assert_close_list(
+        predicted_from_internal_optimization["temperature"],
+        predicted_from_rc["temperature"],
+    )
+
     comparison = evaluation.comparison(lasso_module, lasso_module)
     assert sorted(comparison) == [
         "structure_norm",

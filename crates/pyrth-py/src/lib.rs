@@ -228,32 +228,8 @@ impl Evaluation {
     }
 
     fn optimization(&self, py: Python<'_>, parameters: &Bound<'_, PyDict>) -> PyResult<PyObject> {
-        let data = require_pairs(parameters, "data")?;
-        let initial_resistance = require_first_vec_f64(parameters, &["initial_resistance"])?;
-        let initial_capacitance = require_first_vec_f64(parameters, &["initial_capacitance"])?;
-        let lower_resistance = require_first_vec_f64(parameters, &["lower_resistance"])?;
-        let lower_capacitance = require_first_vec_f64(parameters, &["lower_capacitance"])?;
-        let upper_resistance = require_first_vec_f64(parameters, &["upper_resistance"])?;
-        let upper_capacitance = require_first_vec_f64(parameters, &["upper_capacitance"])?;
-        let max_iter = extract_usize(parameters, "max_iter")?.unwrap_or(128);
-        let initial_step = extract_f64(parameters, "initial_step")?.unwrap_or(0.1);
-        let min_step = extract_f64(parameters, "min_step")?.unwrap_or(1e-6);
-        let shrink_factor = extract_f64(parameters, "shrink_factor")?.unwrap_or(0.5);
-
-        optimize_rc(
-            py,
-            data,
-            initial_resistance,
-            initial_capacitance,
-            lower_resistance,
-            lower_capacitance,
-            upper_resistance,
-            upper_capacitance,
-            max_iter,
-            initial_step,
-            min_step,
-            shrink_factor,
-        )
+        let result = optimization_result_from_parameters(parameters)?;
+        optimization_result_to_dict(py, result)
     }
 
     fn temperature_prediction(
@@ -1036,6 +1012,54 @@ fn optimize_rc(
     Ok(output.into())
 }
 
+fn optimization_result_from_parameters(
+    parameters: &Bound<'_, PyDict>,
+) -> PyResult<pyrth_core::OptimizationResult> {
+    let data = require_pairs(parameters, "data")?;
+    let initial_resistance = require_first_vec_f64(parameters, &["initial_resistance"])?;
+    let initial_capacitance = require_first_vec_f64(parameters, &["initial_capacitance"])?;
+    let lower_resistance = require_first_vec_f64(parameters, &["lower_resistance"])?;
+    let lower_capacitance = require_first_vec_f64(parameters, &["lower_capacitance"])?;
+    let upper_resistance = require_first_vec_f64(parameters, &["upper_resistance"])?;
+    let upper_capacitance = require_first_vec_f64(parameters, &["upper_capacitance"])?;
+    let max_iter = extract_usize(parameters, "max_iter")?.unwrap_or(128);
+    let initial_step = extract_f64(parameters, "initial_step")?.unwrap_or(0.1);
+    let min_step = extract_f64(parameters, "min_step")?.unwrap_or(1e-6);
+    let shrink_factor = extract_f64(parameters, "shrink_factor")?.unwrap_or(0.5);
+
+    let input = pyrth_core::TransientInput::from_pairs(data)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let initial = pyrth_core::RcParameters::from_slices(&initial_resistance, &initial_capacitance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let lower = pyrth_core::RcParameters::from_slices(&lower_resistance, &lower_capacitance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let upper = pyrth_core::RcParameters::from_slices(&upper_resistance, &upper_capacitance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let bounds = pyrth_core::RcParameterBounds::new(lower, upper)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let config = pyrth_core::OptimizationConfig {
+        max_iter,
+        initial_step,
+        min_step,
+        shrink_factor,
+    };
+
+    pyrth_core::optimize_rc_parameters(&input, &initial, &bounds, config)
+        .map_err(|err| PyValueError::new_err(err.to_string()))
+}
+
+fn optimization_result_to_dict(
+    py: Python<'_>,
+    result: pyrth_core::OptimizationResult,
+) -> PyResult<PyObject> {
+    let output = PyDict::new(py);
+    output.set_item("resistance", result.parameters.resistance.to_vec())?;
+    output.set_item("capacitance", result.parameters.capacitance.to_vec())?;
+    output.set_item("residual_norm", result.residual_norm)?;
+    output.set_item("iterations", result.iterations)?;
+    Ok(output.into())
+}
+
 #[pyfunction]
 #[pyo3(signature = (source, power_data=None, lin_sampling_period=1.0))]
 fn predict_temperature_response(
@@ -1077,8 +1101,45 @@ fn predict_temperature_response_from_parameters(
     let power_data = require_first_pairs(parameters, &["power_data", "power"])?;
     let lin_sampling_period = extract_f64(parameters, "lin_sampling_period")?.unwrap_or(1.0);
 
-    if let Some(impulse_response) = extract_first_pairs(parameters, &["impulse_response", "data"])?
+    if let Some(impulse_response) = extract_first_pairs(parameters, &["impulse_response"])? {
+        let input = pyrth_core::TransientInput::from_pairs(impulse_response)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        let power = transient_input_from_pairs_unchecked(power_data);
+        let mut params = pyrth_core::EvaluationParams::default();
+        params.calc_struc = false;
+
+        let result = pyrth_core::predict_temperature(input, power, &params, lin_sampling_period)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+        return temperature_prediction_to_dict(
+            py,
+            result.lin_time.to_vec(),
+            result.predicted_temperature.to_vec(),
+        );
+    }
+
+    if parameters.get_item("data")?.is_some()
+        && parameters.get_item("initial_resistance")?.is_some()
     {
+        let reference_time = require_first_vec_f64(parameters, &["reference_time"])?;
+        let power = transient_input_from_pairs_unchecked(power_data);
+        let optimization = optimization_result_from_parameters(parameters)?;
+        let result = pyrth_core::predict_temperature_from_optimization_result(
+            &power,
+            &optimization,
+            &reference_time.into(),
+            lin_sampling_period,
+        )
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+        return temperature_prediction_to_dict(
+            py,
+            result.lin_time.to_vec(),
+            result.predicted_temperature.to_vec(),
+        );
+    }
+
+    if let Some(impulse_response) = extract_first_pairs(parameters, &["data"])? {
         let input = pyrth_core::TransientInput::from_pairs(impulse_response)
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
         let power = transient_input_from_pairs_unchecked(power_data);
