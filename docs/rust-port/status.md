@@ -117,7 +117,9 @@ implementation remains the reference implementation.
     `Evaluation().optimization({...})`, and
     `Evaluation().temperature_prediction({...})` as dict-parameter facades
     over the module-level PyO3 helpers; temperature prediction accepts explicit
-    impulse responses, Foster RC arrays, or optimization result dicts
+    impulse responses, Foster RC arrays, optimization result dicts, or
+    optimization parameter dictionaries that are solved internally before
+    prediction
   - `Evaluation().bootstrap({...})` accepts Python-style theoretical aliases
     (`theo_resistances`, `theo_capacitances`, `theo_time`,
     `theo_time_size`) plus `signal_to_noise_ratio` and `random_seed`
@@ -218,9 +220,10 @@ Lanczos Cauer coverage currently checks:
   `comparison_module` sweep support, but it does not yet port Python's
   bootstrap comparison modes or optimization comparison modes.
 - Temperature prediction core and PyO3 helpers now support explicit impulse
-  responses, Foster RC parameters, and optimization-result dictionaries, but
-  the PyO3 `temperature_prediction` facade still does not run a full
-  optimization module internally like Python's orchestration layer.
+  responses, Foster RC parameters, optimization-result dictionaries, and a
+  minimal internal optimization path from RC optimization parameters.  Remaining
+  parity work is around the broader Python orchestration layer and its module
+  bookkeeping/export behavior.
 - The next implementation work is split into non-overlapping `jj` slices in
   `docs/rust-port/parallel-plan.md`.
 

@@ -114,7 +114,8 @@ Goal:
 
 Status: theoretical RC impedance generation, standard temperature prediction,
 reusable RC/optimization-result temperature prediction helpers, and the matching
-PyO3 facades are implemented.
+PyO3 facades are implemented.  The PyO3 temperature prediction facade can also
+run the current RC optimization helper internally before prediction.
 
 Owned paths:
 
@@ -126,9 +127,8 @@ Owned paths:
 Goal:
 
 - Build the foundation for comparison, bootstrap-from-theoretical, and
-  temperature prediction workflows.  The remaining work is Python-style
-  orchestration that runs a full optimization module internally before
-  prediction.
+  temperature prediction workflows.  The remaining work is full Python-style
+  orchestration and module bookkeeping around these helpers.
 
 ### G. Comparison Metrics
 
