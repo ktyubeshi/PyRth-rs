@@ -50,6 +50,7 @@ struct GoldenReference {
     log_time_delta: f64,
     log_time_interp: Vec<f64>,
     log_time_pad: Vec<f64>,
+    time_spec: Vec<f64>,
 }
 
 fn fixture_path(name: &str) -> PathBuf {
@@ -119,6 +120,7 @@ fn impedance_and_derivative_match_python_golden() {
         "mosfet_dry_bayesian_lanczos.json",
     ] {
         assert_derivative_matches(fixture_name);
+        assert_time_spectrum_matches(fixture_name);
     }
 }
 
@@ -186,4 +188,37 @@ fn assert_derivative_matches(fixture_name: &str) {
         &derivative.imp_deriv_interp,
         &fixture.reference.imp_deriv_interp,
     );
+}
+
+fn assert_time_spectrum_matches(fixture_name: &str) {
+    let (fixture, result) = evaluate_fixture(fixture_name);
+    let time_spectrum = result.time_spectrum.as_ref().unwrap();
+    assert_array_close_with_tolerance(
+        &format!("{fixture_name}:time_spec"),
+        time_spectrum,
+        &fixture.reference.time_spec,
+        1e-8,
+        1e-6,
+    );
+}
+
+fn assert_array_close_with_tolerance(
+    name: &str,
+    actual: &Array1<f64>,
+    expected: &[f64],
+    epsilon: f64,
+    max_relative: f64,
+) {
+    assert_eq!(actual.len(), expected.len(), "{name} length mismatch");
+    for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+        assert!(
+            relative_eq!(
+                actual,
+                expected,
+                epsilon = epsilon,
+                max_relative = max_relative,
+            ),
+            "mismatch in {name}[{index}]: actual={actual}, expected={expected}"
+        );
+    }
 }

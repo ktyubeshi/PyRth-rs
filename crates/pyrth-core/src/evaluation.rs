@@ -3,6 +3,7 @@ use ndarray::Array1;
 use crate::{
     config::{EvaluationParams, InputMode},
     data::{ImpedanceData, TransientInput},
+    deconvolution::time_spectrum_bayesian,
     derivative::z_fit_deriv,
     error::{PyrthError, Result},
     preprocess::make_impedance_data,
@@ -52,11 +53,12 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
 
     let impedance = make_impedance_data(input)?;
     let derivative = z_fit_deriv(&impedance.impedance, &impedance.log_time, params)?;
+    let time_spectrum = time_spectrum_bayesian(&derivative, params);
 
     Ok(EvaluationResult {
         impedance,
         derivative: Some(derivative),
-        time_spectrum: None,
+        time_spectrum: Some(time_spectrum),
         foster: None,
         cauer: None,
     })
