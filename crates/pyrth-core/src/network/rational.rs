@@ -96,6 +96,27 @@ pub fn cauer_from_foster_khatwani_mpfr(
     )
 }
 
+#[cfg(feature = "mpfr")]
+/// Mirrors Python's Boor-Golub MPFR output before adapting it to Rust's CauerNetwork contract.
+pub fn boor_golub_cauer_mpfr_raw(
+    foster_resistance: &Array1<f64>,
+    foster_capacitance: &Array1<f64>,
+    precision: usize,
+) -> Result<(Vec<f64>, Vec<f64>)> {
+    validate_foster_inputs(foster_resistance, foster_capacitance)?;
+    let precision = validate_mpfr_precision(precision)?;
+    let foster_resistance: Vec<_> = foster_resistance
+        .iter()
+        .map(|value| Float::with_val(precision, *value))
+        .collect();
+    let foster_capacitance: Vec<_> = foster_capacitance
+        .iter()
+        .map(|value| Float::with_val(precision, *value))
+        .collect();
+
+    boor_golub_raw_mpfr(&foster_resistance, &foster_capacitance, precision)
+}
+
 pub(crate) fn poly_long_division_to_cauer_f64(
     numerator: &[f64],
     denominator: &[f64],
@@ -460,6 +481,152 @@ fn generate_markov_params_mpfr(
 }
 
 #[cfg(feature = "mpfr")]
+fn boor_golub_raw_mpfr(
+    foster_resistance: &[Float],
+    foster_capacitance: &[Float],
+    precision: u32,
+) -> Result<(Vec<f64>, Vec<f64>)> {
+    let poles: Vec<_> = foster_resistance
+        .iter()
+        .zip(foster_capacitance)
+        .filter_map(|(resistance, capacitance)| {
+            if resistance > &Float::with_val(precision, 0)
+                && capacitance > &Float::with_val(precision, 0)
+            {
+                Some(Float::with_val(
+                    precision,
+                    Float::with_val(precision, -1)
+                        / Float::with_val(precision, resistance * capacitance),
+                ))
+            } else {
+                None
+            }
+        })
+        .collect();
+    if poles.is_empty() {
+        return invalid_structure("at least one positive Foster pole for Boor-Golub conversion");
+    }
+
+    let pole_count = poles.len() - 1;
+    let weights: Vec<_> = foster_capacitance
+        .iter()
+        .take(poles.len())
+        .map(|capacitance| checked_div_mpfr(&Float::with_val(precision, 1), capacitance, precision))
+        .collect::<Result<_>>()?;
+
+    let mut k = vec![Float::with_val(precision, 0); 2 * poles.len()];
+    let weight_sum = weights
+        .iter()
+        .fold(Float::with_val(precision, 0), |sum, weight| {
+            Float::with_val(precision, sum + weight)
+        });
+    k[1] = checked_div_mpfr(&Float::with_val(precision, 1), &weight_sum, precision)?;
+
+    if pole_count == 0 {
+        return Ok((
+            vec![foster_resistance[0].to_f64()],
+            vec![foster_capacitance[0].to_f64()],
+        ));
+    }
+
+    let mut lambda = vec![Float::with_val(precision, 0); poles.len()];
+    let mut mu = vec![Float::with_val(precision, 0); poles.len()];
+    let mut lambda_mu_sum = vec![Float::with_val(precision, 0); pole_count];
+    let mut lambda_mu_prod = vec![Float::with_val(precision, 0); pole_count];
+    let mut polynomial_basis = vec![Vec::<Float>::new(); poles.len()];
+    polynomial_basis[0] = vec![Float::with_val(precision, 1)];
+
+    for i in 0..poles.len() {
+        lambda[0] = Float::with_val(precision, &lambda[0] - &weights[i] * &poles[i]);
+    }
+    lambda[0] = checked_div_mpfr(&lambda[0], &weight_sum, precision)?;
+
+    k[2] = checked_div_mpfr(
+        &Float::with_val(precision, 1),
+        &Float::with_val(precision, &k[1] * &lambda[0]),
+        precision,
+    )?;
+    polynomial_basis[1] = vec![lambda[0].clone(), Float::with_val(precision, 1)];
+
+    lambda_mu_prod[0] = checked_div_mpfr(
+        &weighted_self_product_mpfr(&poles, &polynomial_basis[1], &weights, precision),
+        &weighted_self_product_mpfr(&poles, &polynomial_basis[0], &weights, precision),
+        precision,
+    )?;
+    mu[1] = checked_div_mpfr(&lambda_mu_prod[0], &lambda[0], precision)?;
+
+    for i in 2..=pole_count {
+        let mut shifted_basis = Vec::with_capacity(polynomial_basis[i - 1].len() + 1);
+        shifted_basis.push(Float::with_val(precision, 0));
+        shifted_basis.extend(polynomial_basis[i - 1].iter().cloned());
+
+        lambda_mu_sum[i - 1] = checked_div_mpfr(
+            &weighted_inner_product_mpfr(
+                &poles,
+                &polynomial_basis[i - 1],
+                &shifted_basis,
+                &weights,
+                precision,
+            ),
+            &weighted_self_product_mpfr(&poles, &polynomial_basis[i - 1], &weights, precision),
+            precision,
+        )?;
+        lambda[i - 1] = Float::with_val(precision, &lambda_mu_sum[i - 1] - &mu[i - 1]);
+
+        let first = polynomial_mul_mpfr(
+            &[lambda_mu_sum[i - 1].clone(), Float::with_val(precision, 1)],
+            &polynomial_basis[i - 1],
+            precision,
+        );
+        let second = polynomial_mul_mpfr(
+            &[Float::with_val(precision, -&lambda_mu_prod[i - 2])],
+            &polynomial_basis[i - 2],
+            precision,
+        );
+        polynomial_basis[i] = polynomial_add_mpfr(&first, &second, precision);
+
+        lambda_mu_prod[i - 1] = checked_div_mpfr(
+            &weighted_self_product_mpfr(&poles, &polynomial_basis[i], &weights, precision),
+            &weighted_self_product_mpfr(&poles, &polynomial_basis[i - 1], &weights, precision),
+            precision,
+        )?;
+        mu[i] = checked_div_mpfr(&lambda_mu_prod[i - 1], &lambda[i - 1], precision)?;
+    }
+
+    k[3] = checked_div_mpfr(
+        &Float::with_val(precision, &k[1] * &lambda[0]),
+        &mu[1],
+        precision,
+    )?;
+    for i in 2..=pole_count {
+        let mut lambdas = k[1].clone();
+        let mut mus = mu[1].clone();
+        for item in mu.iter().take(i).skip(2) {
+            mus = Float::with_val(precision, mus * item);
+        }
+        for item in lambda.iter().take(i) {
+            lambdas = Float::with_val(precision, lambdas * item);
+        }
+        k[2 * i] = checked_div_mpfr(&mus, &lambdas, precision)?;
+        k[2 * i + 1] = checked_div_mpfr(
+            &lambdas,
+            &Float::with_val(precision, mus * &mu[i]),
+            precision,
+        )?;
+    }
+
+    let mut resistance = vec![0.0; poles.len()];
+    let mut capacitance = vec![0.0; poles.len()];
+    for i in 0..pole_count {
+        resistance[i] = k[2 * i + 2].to_f64();
+        capacitance[i] = k[2 * i + 1].to_f64();
+    }
+    capacitance[pole_count] = k[2 * pole_count + 1].to_f64();
+
+    Ok((resistance, capacitance))
+}
+
+#[cfg(feature = "mpfr")]
 fn khatwani_method_mpfr(
     n_terms: usize,
     markov_parameters: &[Float],
@@ -816,6 +983,67 @@ fn polynomial_neg_mpfr(values: &[Float]) -> Vec<Float> {
         .iter()
         .map(|value| Float::with_val(value.prec(), -value))
         .collect()
+}
+
+#[cfg(feature = "mpfr")]
+fn horner_poly_eval_mpfr(value: &Float, polynomial: &[Float], precision: u32) -> Float {
+    let mut result = Float::with_val(precision, 0);
+    for coefficient in polynomial
+        .iter()
+        .rev()
+        .take(polynomial.len().saturating_sub(1))
+    {
+        result = Float::with_val(
+            precision,
+            Float::with_val(precision, result + coefficient) * value,
+        );
+    }
+    Float::with_val(
+        precision,
+        result
+            + polynomial
+                .first()
+                .cloned()
+                .unwrap_or_else(|| Float::with_val(precision, 0)),
+    )
+}
+
+#[cfg(feature = "mpfr")]
+fn weighted_inner_product_mpfr(
+    poles: &[Float],
+    left: &[Float],
+    right: &[Float],
+    weights: &[Float],
+    precision: u32,
+) -> Float {
+    let mut product = Float::with_val(precision, 0);
+    for i in 0..poles.len() {
+        let left_value = horner_poly_eval_mpfr(&poles[i], left, precision);
+        let right_value = horner_poly_eval_mpfr(&poles[i], right, precision);
+        product = Float::with_val(
+            precision,
+            product - Float::with_val(precision, left_value * right_value * &weights[i]),
+        );
+    }
+    product
+}
+
+#[cfg(feature = "mpfr")]
+fn weighted_self_product_mpfr(
+    poles: &[Float],
+    polynomial: &[Float],
+    weights: &[Float],
+    precision: u32,
+) -> Float {
+    let mut product = Float::with_val(precision, 0);
+    for i in 0..poles.len() {
+        let value = horner_poly_eval_mpfr(&poles[i], polynomial, precision);
+        product = Float::with_val(
+            precision,
+            product + Float::with_val(precision, &value * value * &weights[i]),
+        );
+    }
+    product
 }
 
 #[cfg(feature = "mpfr")]

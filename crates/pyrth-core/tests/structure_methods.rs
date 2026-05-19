@@ -2,7 +2,8 @@ use approx::assert_relative_eq;
 use ndarray::array;
 #[cfg(all(feature = "mpfr", not(target_env = "msvc")))]
 use pyrth_core::network::{
-    cauer_from_foster_khatwani_mpfr, cauer_from_foster_poly_long_mpfr, cauer_from_foster_sobhy_mpfr,
+    boor_golub_cauer_mpfr_raw, cauer_from_foster_khatwani_mpfr, cauer_from_foster_poly_long_mpfr,
+    cauer_from_foster_sobhy_mpfr,
 };
 use pyrth_core::{
     error::PyrthError,
@@ -120,6 +121,24 @@ fn khatwani_mpfr_converts_single_foster_branch() {
     assert_relative_eq!(cauer.resistance[0], 2.0, epsilon = 1e-12);
     assert_relative_eq!(cauer.capacitance[0], 3.0, epsilon = 1e-12);
     assert!(cauer.differential_structure.is_empty());
+}
+
+#[cfg(all(feature = "mpfr", not(target_env = "msvc")))]
+#[test]
+fn boor_golub_mpfr_raw_preserves_python_shape_for_two_branches() {
+    let resistance = array![2.0, 3.0];
+    let capacitance = array![5.0, 7.0];
+
+    let (cauer_resistance, cauer_capacitance) =
+        boor_golub_cauer_mpfr_raw(&resistance, &capacitance, 250).unwrap();
+
+    assert_eq!(cauer_resistance.len(), 2);
+    assert_eq!(cauer_capacitance.len(), 2);
+    assert!(cauer_resistance[0].is_finite() && cauer_resistance[0] > 0.0);
+    assert_relative_eq!(cauer_resistance[1], 0.0, epsilon = 1e-12);
+    assert!(cauer_capacitance
+        .iter()
+        .all(|value| value.is_finite() && *value > 0.0));
 }
 
 #[test]
