@@ -131,6 +131,108 @@ pub fn time_spectrum_fourier(
     }))
 }
 
+pub fn time_spectrum_lasso(
+    derivative: &DerivativeResult,
+    params: &EvaluationParams,
+) -> Array1<f64> {
+    let design = response_matrix(&derivative.log_time_pad);
+    let (normalized_design, column_norms) = normalize_columns(&design);
+    let normalized_coefficients = nonnegative_lasso_coordinate_descent(
+        &normalized_design,
+        &derivative.imp_deriv_interp,
+        params.lasso_alpha,
+        params.lasso_max_iter,
+        params.lasso_tol,
+    );
+
+    Array1::from_iter(
+        normalized_coefficients
+            .iter()
+            .zip(column_norms.iter())
+            .map(|(coefficient, norm)| coefficient / norm),
+    ) * derivative.log_time_delta
+}
+
+fn normalize_columns(design: &Array2<f64>) -> (Array2<f64>, Array1<f64>) {
+    let mut normalized = design.clone();
+    let mut norms = Array1::ones(design.ncols());
+
+    for col in 0..design.ncols() {
+        let norm = design
+            .column(col)
+            .iter()
+            .map(|value| value * value)
+            .sum::<f64>()
+            .sqrt();
+        let norm = if norm == 0.0 { 1.0 } else { norm };
+        norms[col] = norm;
+        for row in 0..design.nrows() {
+            normalized[(row, col)] /= norm;
+        }
+    }
+
+    (normalized, norms)
+}
+
+fn nonnegative_lasso_coordinate_descent(
+    design: &Array2<f64>,
+    target: &Array1<f64>,
+    alpha: f64,
+    max_iter: usize,
+    tol: f64,
+) -> Array1<f64> {
+    let sample_count = target.len() as f64;
+    let mut coefficients = Array1::zeros(design.ncols());
+    let mut residual = target.clone();
+    let column_norm_sq = (0..design.ncols())
+        .map(|col| {
+            design
+                .column(col)
+                .iter()
+                .map(|value| value * value)
+                .sum::<f64>()
+        })
+        .collect::<Vec<_>>();
+
+    for _ in 0..max_iter {
+        let mut max_change = 0.0_f64;
+        let mut max_value = 0.0_f64;
+
+        for col in 0..design.ncols() {
+            let old = coefficients[col];
+            if old != 0.0 {
+                for row in 0..design.nrows() {
+                    residual[row] += design[(row, col)] * old;
+                }
+            }
+
+            let rho = design.column(col).dot(&residual);
+            let norm_sq = column_norm_sq[col];
+            let new_value = if norm_sq == 0.0 {
+                0.0
+            } else {
+                ((rho - alpha * sample_count) / norm_sq).max(0.0)
+            };
+
+            if new_value != 0.0 {
+                for row in 0..design.nrows() {
+                    residual[row] -= design[(row, col)] * new_value;
+                }
+            }
+
+            coefficients[col] = new_value;
+            max_change = max_change.max((new_value - old).abs());
+            max_value = max_value.max(new_value.abs());
+        }
+
+        if max_change <= tol * max_value.max(1.0) {
+            break;
+        }
+    }
+
+    coefficients
+}
+
 fn weight_z(value: f64) -> f64 {
     (value - value.exp()).exp()
 }

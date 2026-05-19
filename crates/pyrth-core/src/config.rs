@@ -215,6 +215,12 @@ pub struct EvaluationParams {
     pub minimum_window_size: usize,
     pub window_increment: f64,
     pub expected_var: f64,
+    #[serde(default = "default_lasso_alpha")]
+    pub lasso_alpha: f64,
+    #[serde(default = "default_lasso_max_iter")]
+    pub lasso_max_iter: usize,
+    #[serde(default = "default_lasso_tol")]
+    pub lasso_tol: f64,
     pub min_index: usize,
     pub timespec_interpolate_factor: f64,
     pub blockwise_sum_width: usize,
@@ -256,6 +262,9 @@ impl Default for EvaluationParams {
             minimum_window_size: 70,
             window_increment: 0.1,
             expected_var: 0.09,
+            lasso_alpha: default_lasso_alpha(),
+            lasso_max_iter: default_lasso_max_iter(),
+            lasso_tol: default_lasso_tol(),
             min_index: 3,
             timespec_interpolate_factor: 1.0,
             blockwise_sum_width: 20,
@@ -283,4 +292,16 @@ fn normalize_label(value: &str) -> String {
 
 fn default_filter_range() -> f64 {
     0.60
+}
+
+fn default_lasso_alpha() -> f64 {
+    1e-4
+}
+
+fn default_lasso_max_iter() -> usize {
+    10000
+}
+
+fn default_lasso_tol() -> f64 {
+    1e-4
 }

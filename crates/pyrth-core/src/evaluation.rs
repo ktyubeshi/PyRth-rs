@@ -3,7 +3,7 @@ use ndarray::Array1;
 use crate::{
     config::{DeconvMode, EvaluationParams, InputMode},
     data::{ImpedanceData, TransientInput},
-    deconvolution::{time_spectrum_bayesian, time_spectrum_fourier},
+    deconvolution::{time_spectrum_bayesian, time_spectrum_fourier, time_spectrum_lasso},
     derivative::z_fit_deriv,
     error::{PyrthError, Result},
     network::{cauer_from_foster_lanczos, foster_from_time_spectrum},
@@ -91,7 +91,8 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
     let time_spectrum = match params.deconv_mode {
         DeconvMode::Bayesian => Ok(time_spectrum_bayesian(&derivative, params)),
         DeconvMode::Fourier => Ok(time_spectrum_fourier(&derivative, params)),
-        DeconvMode::Lasso | DeconvMode::Adaptive => Err(PyrthError::UnsupportedDeconvolutionMode(
+        DeconvMode::Lasso => Ok(time_spectrum_lasso(&derivative, params)),
+        DeconvMode::Adaptive => Err(PyrthError::UnsupportedDeconvolutionMode(
             params.deconv_mode.to_string(),
         )),
     }?;
@@ -181,6 +182,19 @@ fn validate_params(params: &EvaluationParams) -> Result<()> {
             "expected_var",
             "finite and non-negative",
             params.expected_var,
+        );
+    }
+    if !params.lasso_alpha.is_finite() || params.lasso_alpha < 0.0 {
+        return invalid_param("lasso_alpha", "finite and non-negative", params.lasso_alpha);
+    }
+    if params.lasso_max_iter == 0 {
+        return invalid_param("lasso_max_iter", "greater than zero", params.lasso_max_iter);
+    }
+    if !params.lasso_tol.is_finite() || params.lasso_tol <= 0.0 {
+        return invalid_param(
+            "lasso_tol",
+            "finite and greater than zero",
+            params.lasso_tol,
         );
     }
     if !params.timespec_interpolate_factor.is_finite() || params.timespec_interpolate_factor < 1.0 {

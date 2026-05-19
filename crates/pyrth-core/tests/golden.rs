@@ -242,22 +242,51 @@ fn fourier_deconvolution_filter_changes_time_spectrum() {
 }
 
 #[test]
+fn lasso_deconvolution_returns_sparse_time_spectrum() {
+    let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
+    let mut params = params_from_fixture(&fixture);
+    params.deconv_mode = DeconvMode::Lasso;
+    params.calc_struc = false;
+    params.log_time_size = 64;
+    params.lasso_max_iter = 200;
+    params.lasso_tol = 1e-3;
+
+    let (_, result) = evaluate_fixture_with_params(fixture, params.clone());
+    let derivative = result.derivative.as_ref().unwrap();
+    let time_spectrum = result.time_spectrum.as_ref().unwrap();
+
+    assert_eq!(time_spectrum.len(), params.log_time_size);
+    assert_eq!(time_spectrum.len(), derivative.log_time_pad.len());
+    assert!(
+        time_spectrum
+            .iter()
+            .all(|value| value.is_finite() && *value >= 0.0),
+        "Lasso time spectrum contains invalid values"
+    );
+    assert!(
+        time_spectrum.iter().any(|value| *value > 1e-12),
+        "Lasso time spectrum is all zeros"
+    );
+    assert!(result.foster.is_some());
+    assert!(result.cauer.is_none());
+}
+
+#[test]
 fn unimplemented_deconvolution_modes_return_errors() {
-    for deconv_mode in [DeconvMode::Lasso, DeconvMode::Adaptive] {
-        let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
-        let mut params = params_from_fixture(&fixture);
-        params.deconv_mode = deconv_mode;
+    let deconv_mode = DeconvMode::Adaptive;
+    let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
+    let mut params = params_from_fixture(&fixture);
+    params.deconv_mode = deconv_mode;
 
-        let input =
-            TransientInput::from_pairs(fixture.input.data.iter().map(|pair| (pair[0], pair[1])))
-                .unwrap();
-        let err = evaluate(input, &params).unwrap_err();
+    let input =
+        TransientInput::from_pairs(fixture.input.data.iter().map(|pair| (pair[0], pair[1])))
+            .unwrap();
+    let err = evaluate(input, &params).unwrap_err();
 
-        assert!(matches!(
-            err,
-            PyrthError::UnsupportedDeconvolutionMode(mode) if mode == deconv_mode.to_string()
-        ));
-    }
+    assert!(matches!(
+        err,
+        PyrthError::UnsupportedDeconvolutionMode(mode) if mode == deconv_mode.to_string()
+    ));
 }
 
 #[test]
