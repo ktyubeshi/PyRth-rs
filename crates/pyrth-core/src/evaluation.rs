@@ -90,7 +90,7 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
     let derivative = z_fit_deriv(&impedance.impedance, &impedance.log_time, params)?;
     let time_spectrum = match params.deconv_mode {
         DeconvMode::Bayesian => time_spectrum_bayesian(&derivative, params),
-        DeconvMode::Fourier => time_spectrum_fourier(&derivative),
+        DeconvMode::Fourier => time_spectrum_fourier(&derivative, params),
         DeconvMode::Lasso | DeconvMode::Adaptive => time_spectrum_bayesian(&derivative, params),
     };
     let foster = foster_from_time_spectrum(&derivative.log_time_pad, &time_spectrum, 1e-10)?;
@@ -119,6 +119,16 @@ fn validate_params(params: &EvaluationParams) -> Result<()> {
     }
     if params.log_time_size == 0 {
         return invalid_param("log_time_size", "greater than zero", params.log_time_size);
+    }
+    if !params.filter_range.is_finite() || params.filter_range <= 0.0 {
+        return invalid_param(
+            "filter_range",
+            "finite and greater than zero",
+            params.filter_range,
+        );
+    }
+    if !params.filter_parameter.is_finite() {
+        return invalid_param("filter_parameter", "finite", params.filter_parameter);
     }
     if params.minimum_window_size == 0 {
         return invalid_param(

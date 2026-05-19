@@ -92,6 +92,64 @@ impl fmt::Display for DeconvMode {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum FourierFilter {
+    Hann,
+    Rectangular,
+    Gauss,
+    Fermi,
+    Nuttall,
+    BlackmanNuttall,
+    BlackmanHarris,
+}
+
+impl FourierFilter {
+    pub fn from_label(value: &str) -> Result<Self> {
+        match normalize_label(value).as_str() {
+            "hann" => Ok(Self::Hann),
+            "rectangular" => Ok(Self::Rectangular),
+            "gauss" | "gaussian" => Ok(Self::Gauss),
+            "fermi" => Ok(Self::Fermi),
+            "nuttall" => Ok(Self::Nuttall),
+            "blackman_nuttall" | "blackmannuttall" => Ok(Self::BlackmanNuttall),
+            "blackman_harris" | "blackmanharris" => Ok(Self::BlackmanHarris),
+            _ => Err(PyrthError::UnknownMode {
+                kind: "Fourier filter",
+                value: value.to_string(),
+            }),
+        }
+    }
+}
+
+impl Default for FourierFilter {
+    fn default() -> Self {
+        Self::Hann
+    }
+}
+
+impl FromStr for FourierFilter {
+    type Err = PyrthError;
+
+    fn from_str(value: &str) -> Result<Self> {
+        Self::from_label(value)
+    }
+}
+
+impl fmt::Display for FourierFilter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Hann => "hann",
+            Self::Rectangular => "rectangular",
+            Self::Gauss => "gauss",
+            Self::Fermi => "fermi",
+            Self::Nuttall => "nuttall",
+            Self::BlackmanNuttall => "blackman_nuttall",
+            Self::BlackmanHarris => "blackman_harris",
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum StructureMethod {
     Lanczos,
     Sobhy,
@@ -143,6 +201,12 @@ pub struct EvaluationParams {
     pub structure_method: StructureMethod,
     pub precision: usize,
     pub log_time_size: usize,
+    #[serde(default)]
+    pub filter_name: FourierFilter,
+    #[serde(default = "default_filter_range")]
+    pub filter_range: f64,
+    #[serde(default)]
+    pub filter_parameter: f64,
     pub bay_steps: usize,
     pub pad_factor_pre: f64,
     pub pad_factor_after: f64,
@@ -181,6 +245,9 @@ impl Default for EvaluationParams {
             structure_method: StructureMethod::Sobhy,
             precision: 250,
             log_time_size: 250,
+            filter_name: FourierFilter::Hann,
+            filter_range: default_filter_range(),
+            filter_parameter: 0.0,
             bay_steps: 1000,
             pad_factor_pre: 0.01,
             pad_factor_after: 0.01,
@@ -212,4 +279,8 @@ impl Default for EvaluationParams {
 
 fn normalize_label(value: &str) -> String {
     value.trim().to_ascii_lowercase().replace('-', "_")
+}
+
+fn default_filter_range() -> f64 {
+    0.60
 }

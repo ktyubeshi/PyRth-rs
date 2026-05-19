@@ -14,7 +14,7 @@ pub mod export;
 pub mod network;
 pub mod preprocess;
 
-pub use config::{DeconvMode, EvaluationParams, InputMode, StructureMethod};
+pub use config::{DeconvMode, EvaluationParams, FourierFilter, InputMode, StructureMethod};
 pub use data::{ImpedanceData, TransientInput};
 pub use deconvolution::{
     bayesian_deconvolution, response_matrix, time_spectrum_bayesian, time_spectrum_fourier,

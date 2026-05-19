@@ -3,8 +3,8 @@ use std::{fs, path::PathBuf};
 use approx::{assert_relative_eq, relative_eq};
 use ndarray::Array1;
 use pyrth_core::{
-    cauer_from_foster_lanczos, evaluate, export_csv, DeconvMode, EvaluationParams, InputMode,
-    PyrthError, StructureMethod, TransientInput,
+    cauer_from_foster_lanczos, evaluate, export_csv, DeconvMode, EvaluationParams, FourierFilter,
+    InputMode, PyrthError, StructureMethod, TransientInput,
 };
 use serde::Deserialize;
 
@@ -205,6 +205,40 @@ fn fourier_deconvolution_returns_time_spectrum() {
     );
     assert!(result.foster.is_some());
     assert!(result.cauer.is_none());
+}
+
+#[test]
+fn fourier_deconvolution_filter_changes_time_spectrum() {
+    let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
+    let mut hann_params = params_from_fixture(&fixture);
+    hann_params.deconv_mode = DeconvMode::Fourier;
+    hann_params.calc_struc = false;
+    hann_params.filter_name = FourierFilter::Hann;
+    hann_params.filter_range = 0.60;
+
+    let (_, hann_result) = evaluate_fixture_with_params(fixture, hann_params);
+    let hann_spectrum = hann_result.time_spectrum.as_ref().unwrap();
+
+    let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
+    let mut rectangular_params = params_from_fixture(&fixture);
+    rectangular_params.deconv_mode = DeconvMode::Fourier;
+    rectangular_params.calc_struc = false;
+    rectangular_params.filter_name = FourierFilter::Rectangular;
+    rectangular_params.filter_range = 0.60;
+
+    let (_, rectangular_result) = evaluate_fixture_with_params(fixture, rectangular_params);
+    let rectangular_spectrum = rectangular_result.time_spectrum.as_ref().unwrap();
+
+    assert_eq!(hann_spectrum.len(), rectangular_spectrum.len());
+    assert!(hann_spectrum.iter().all(|value| value.is_finite()));
+    assert!(rectangular_spectrum.iter().all(|value| value.is_finite()));
+    assert!(
+        hann_spectrum
+            .iter()
+            .zip(rectangular_spectrum)
+            .any(|(hann, rectangular)| (hann - rectangular).abs() > 1e-12),
+        "Fourier filters produced identical time spectra"
+    );
 }
 
 #[test]

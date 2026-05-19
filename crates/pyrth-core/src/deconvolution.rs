@@ -1,7 +1,10 @@
 use ndarray::{Array1, Array2};
 use rustfft::{num_complex::Complex, FftPlanner};
 
-use crate::{config::EvaluationParams, evaluation::DerivativeResult};
+use crate::{
+    config::{EvaluationParams, FourierFilter},
+    evaluation::DerivativeResult,
+};
 
 pub fn response_matrix(domain: &Array1<f64>) -> Array2<f64> {
     let len = domain.len();
@@ -49,7 +52,10 @@ pub fn time_spectrum_bayesian(
         * derivative.log_time_delta
 }
 
-pub fn time_spectrum_fourier(derivative: &DerivativeResult) -> Array1<f64> {
+pub fn time_spectrum_fourier(
+    derivative: &DerivativeResult,
+    params: &EvaluationParams,
+) -> Array1<f64> {
     let len = derivative.imp_deriv_interp.len();
     if len == 0 {
         return Array1::zeros(0);
@@ -93,14 +99,22 @@ pub fn time_spectrum_fourier(derivative: &DerivativeResult) -> Array1<f64> {
     }
 
     let epsilon = 1e-12;
+    let filter = fourier_filter(
+        params.filter_name,
+        len,
+        derivative.log_time_delta,
+        params.filter_range,
+        params.filter_parameter,
+    );
     let mut deconvolved = signal
         .into_iter()
         .zip(kernel)
-        .map(|(signal_value, kernel_value)| {
+        .zip(filter)
+        .map(|((signal_value, kernel_value), filter_value)| {
             if kernel_value.norm_sqr() <= epsilon * epsilon {
                 Complex::new(0.0, 0.0)
             } else {
-                signal_value / kernel_value
+                (signal_value / kernel_value) * filter_value
             }
         })
         .collect::<Vec<_>>();
@@ -119,4 +133,145 @@ pub fn time_spectrum_fourier(derivative: &DerivativeResult) -> Array1<f64> {
 
 fn weight_z(value: f64) -> f64 {
     (value - value.exp()).exp()
+}
+
+fn fourier_filter(
+    filter_name: FourierFilter,
+    len: usize,
+    spacing: f64,
+    filter_range: f64,
+    filter_parameter: f64,
+) -> Vec<f64> {
+    if len == 0 {
+        return Vec::new();
+    }
+    let shifted_freq = fftshifted_frequencies(len, spacing);
+    let shifted_filter = match filter_name {
+        FourierFilter::Hann => {
+            cosine_window_filter(&shifted_freq, filter_range, |index, n_minus_one| {
+                let phase = std::f64::consts::PI * index as f64 / n_minus_one as f64;
+                phase.sin() * phase.sin()
+            })
+        }
+        FourierFilter::Rectangular => {
+            cosine_window_filter(&shifted_freq, filter_range, |_index, _n_minus_one| 1.0)
+        }
+        FourierFilter::Gauss => gauss_filter(&shifted_freq, filter_range, filter_parameter),
+        FourierFilter::Fermi => fermi_filter(&shifted_freq, filter_range, filter_parameter),
+        FourierFilter::Nuttall => {
+            cosine_window_filter(&shifted_freq, filter_range, |index, n_minus_one| {
+                four_term_cosine(index, n_minus_one, 0.355768, 0.487396, 0.144232, 0.012604)
+            })
+        }
+        FourierFilter::BlackmanNuttall => {
+            cosine_window_filter(&shifted_freq, filter_range, |index, n_minus_one| {
+                four_term_cosine(
+                    index,
+                    n_minus_one,
+                    0.3635819,
+                    0.4891775,
+                    0.1365995,
+                    0.0106411,
+                )
+            })
+        }
+        FourierFilter::BlackmanHarris => {
+            cosine_window_filter(&shifted_freq, filter_range, |index, n_minus_one| {
+                four_term_cosine(index, n_minus_one, 0.35875, 0.48829, 0.14128, 0.01168)
+            })
+        }
+    };
+    ifftshift(shifted_filter)
+}
+
+fn fftshifted_frequencies(len: usize, spacing: f64) -> Vec<f64> {
+    let scale = len as f64 * spacing;
+    let mut frequencies = (0..len)
+        .map(|index| {
+            let positive_bins = (len + 1) / 2;
+            let bin = if index < positive_bins {
+                index as isize
+            } else {
+                index as isize - len as isize
+            };
+            bin as f64 / scale
+        })
+        .collect::<Vec<_>>();
+    fftshift(&mut frequencies);
+    frequencies
+}
+
+fn cosine_window_filter<F>(frequency: &[f64], filter_range: f64, window: F) -> Vec<f64>
+where
+    F: Fn(usize, usize) -> f64,
+{
+    let len = frequency.len();
+    let maxfreq = filter_range.abs();
+    let idx_l = lower_bound(frequency, -maxfreq);
+    let idx_u = lower_bound(frequency, maxfreq);
+    let mut filter = vec![0.0; len];
+    if idx_u <= idx_l {
+        return filter;
+    }
+
+    let n_minus_one = idx_u - idx_l - 1;
+    if n_minus_one == 0 {
+        filter[idx_l] = 1.0;
+        return filter;
+    }
+
+    for index in 0..=n_minus_one {
+        filter[idx_l + index] = window(index, n_minus_one);
+    }
+    filter
+}
+
+fn gauss_filter(frequency: &[f64], filter_range: f64, sigma: f64) -> Vec<f64> {
+    cosine_window_filter(frequency, filter_range, |index, n_minus_one| {
+        if sigma == 0.0 {
+            return if index == n_minus_one / 2 { 1.0 } else { 0.0 };
+        }
+        let center = n_minus_one as f64 / 2.0;
+        let width = sigma * n_minus_one as f64 / 2.0;
+        (-0.5 * ((index as f64 - center) / width).powi(2)).exp()
+    })
+}
+
+fn fermi_filter(frequency: &[f64], filter_range: f64, sigma: f64) -> Vec<f64> {
+    frequency
+        .iter()
+        .copied()
+        .map(|freq| {
+            if sigma == 0.0 {
+                if freq.abs() < filter_range.abs() {
+                    1.0
+                } else {
+                    0.0
+                }
+            } else {
+                let exp_value = (-(freq.abs() - filter_range.abs()) / sigma).exp();
+                exp_value / (1.0 + exp_value)
+            }
+        })
+        .collect()
+}
+
+fn four_term_cosine(index: usize, n_minus_one: usize, a0: f64, a1: f64, a2: f64, a3: f64) -> f64 {
+    let phase = 2.0 * std::f64::consts::PI * index as f64 / n_minus_one as f64;
+    a0 - a1 * phase.cos() + a2 * (2.0 * phase).cos() - a3 * (3.0 * phase).cos()
+}
+
+fn lower_bound(values: &[f64], target: f64) -> usize {
+    values.partition_point(|value| *value < target)
+}
+
+fn fftshift(values: &mut [f64]) {
+    let mid = (values.len() + 1) / 2;
+    values.rotate_left(mid);
+}
+
+fn ifftshift(mut values: Vec<f64>) -> Vec<f64> {
+    let shift = values.len() / 2;
+    values.rotate_left(shift);
+    values
 }
