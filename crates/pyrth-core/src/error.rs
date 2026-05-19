@@ -16,6 +16,13 @@ pub enum PyrthError {
     #[error("input values must be finite")]
     InvalidValues,
 
+    #[error("{parameter} must be {expected}, got {actual}")]
+    InvalidParameter {
+        parameter: &'static str,
+        expected: &'static str,
+        actual: String,
+    },
+
     #[error("time constant spectrum is empty after filtering")]
     EmptySpectrum,
 

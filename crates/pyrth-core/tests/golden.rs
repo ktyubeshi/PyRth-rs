@@ -4,7 +4,7 @@ use approx::{assert_relative_eq, relative_eq};
 use ndarray::Array1;
 use pyrth_core::{
     cauer_from_foster_lanczos, evaluate, export_csv, DeconvMode, EvaluationParams, InputMode,
-    StructureMethod, TransientInput,
+    PyrthError, StructureMethod, TransientInput,
 };
 use serde::Deserialize;
 
@@ -180,6 +180,33 @@ fn evaluation_flags_gate_pipeline_stages() {
     assert!(result.time_spectrum.is_some());
     assert!(result.foster.is_some());
     assert!(result.cauer.is_none());
+}
+
+#[test]
+fn invalid_evaluation_params_return_errors() {
+    let input = TransientInput::from_pairs([(1e-6, 0.1), (1e-5, 0.2)]).unwrap();
+    let mut params = EvaluationParams::default();
+    params.log_time_size = 0;
+
+    let err = evaluate(input, &params).unwrap_err();
+    assert!(matches!(
+        err,
+        PyrthError::InvalidParameter {
+            parameter: "log_time_size",
+            ..
+        }
+    ));
+
+    let input = TransientInput::from_pairs([(1e-6, 0.1)]).unwrap();
+    let params = EvaluationParams::default();
+    let err = evaluate(input, &params).unwrap_err();
+    assert!(matches!(
+        err,
+        PyrthError::InvalidParameter {
+            parameter: "data",
+            ..
+        }
+    ));
 }
 
 #[test]
