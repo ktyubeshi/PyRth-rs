@@ -3,7 +3,7 @@
 use std::{collections::HashMap, fs, path::Path, sync::RwLock};
 
 use pyo3::{
-    exceptions::PyValueError,
+    exceptions::{PyKeyError, PyValueError},
     prelude::*,
     types::{PyAny, PyDict, PyList},
 };
@@ -71,6 +71,51 @@ impl PyStructureFunction {
 
     fn to_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
         evaluation_result_to_dict(py, self.result.clone())
+    }
+
+    fn keys(&self) -> Vec<String> {
+        evaluation_result_keys(&self.result)
+    }
+
+    #[pyo3(signature = (key, default=None))]
+    fn get(&self, py: Python<'_>, key: &str, default: Option<PyObject>) -> PyResult<PyObject> {
+        match self.result_item(py, key)? {
+            Some(value) => Ok(value),
+            None => Ok(default.unwrap_or_else(|| py.None())),
+        }
+    }
+
+    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<PyObject> {
+        self.result_item(py, key)?
+            .ok_or_else(|| PyKeyError::new_err(key.to_string()))
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        evaluation_result_keys(&self.result)
+            .iter()
+            .any(|candidate| candidate == key)
+    }
+
+    fn __len__(&self) -> usize {
+        evaluation_result_keys(&self.result).len()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "StructureFunction(label={:?}, keys={:?})",
+            self.label,
+            evaluation_result_keys(&self.result)
+        )
+    }
+}
+
+impl PyStructureFunction {
+    fn result_item(&self, py: Python<'_>, key: &str) -> PyResult<Option<PyObject>> {
+        let output = evaluation_result_to_dict(py, self.result.clone())?;
+        let output = output.bind(py).downcast::<PyDict>().map_err(|err| {
+            PyValueError::new_err(format!("StructureFunction conversion failed: {err}"))
+        })?;
+        Ok(output.get_item(key)?.map(|value| value.unbind()))
     }
 }
 
@@ -203,15 +248,15 @@ impl Evaluation {
     fn comparison(
         &self,
         py: Python<'_>,
-        reference: &Bound<'_, PyDict>,
-        candidate: Option<&Bound<'_, PyDict>>,
+        reference: &Bound<'_, PyAny>,
+        candidate: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyObject> {
         let (reference, candidate) = match candidate {
             Some(candidate) => (reference.clone(), candidate.clone()),
             None => comparison_inputs_from_wrapper(reference)?,
         };
-        let reference = evaluation_result_from_result_or_params(py, self, &reference)?;
-        let candidate = evaluation_result_from_result_or_params(py, self, &candidate)?;
+        let reference = evaluation_result_from_any_or_params(py, self, &reference)?;
+        let candidate = evaluation_result_from_any_or_params(py, self, &candidate)?;
         let result = pyrth_core::compare_evaluations(&reference, &candidate)
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
@@ -626,14 +671,19 @@ fn extract_first_string(parameters: &Bound<'_, PyDict>, keys: &[&str]) -> PyResu
 }
 
 fn comparison_inputs_from_wrapper<'py>(
-    parameters: &Bound<'py, PyDict>,
-) -> PyResult<(Bound<'py, PyDict>, Bound<'py, PyDict>)> {
-    let reference = require_first_dict(
+    parameters: &Bound<'py, PyAny>,
+) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyAny>)> {
+    let parameters = parameters.downcast::<PyDict>().map_err(|err| {
+        PyValueError::new_err(format!(
+            "comparison requires either (reference, candidate) arguments or one dict with reference and candidate: {err}"
+        ))
+    })?;
+    let reference = require_first_item(
         parameters,
         &["reference", "reference_result", "reference_parameters"],
         "comparison requires either (reference, candidate) arguments or one dict with reference and candidate",
     )?;
-    let candidate = require_first_dict(
+    let candidate = require_first_item(
         parameters,
         &["candidate", "candidate_result", "candidate_parameters"],
         "comparison requires either (reference, candidate) arguments or one dict with reference and candidate",
@@ -1097,6 +1147,23 @@ fn evaluation_result_from_result_or_params(
     evaluation_result_from_dict(output)
 }
 
+fn evaluation_result_from_any_or_params(
+    py: Python<'_>,
+    evaluation: &Evaluation,
+    source: &Bound<'_, PyAny>,
+) -> PyResult<pyrth_core::EvaluationResult> {
+    if let Ok(module) = source.extract::<PyRef<'_, PyStructureFunction>>() {
+        return Ok(module.result.clone());
+    }
+
+    let parameters = source.downcast::<PyDict>().map_err(|err| {
+        PyValueError::new_err(format!(
+            "comparison input must be a dict or StructureFunction: {err}"
+        ))
+    })?;
+    evaluation_result_from_result_or_params(py, evaluation, parameters)
+}
+
 fn looks_like_evaluation_result(parameters: &Bound<'_, PyDict>) -> PyResult<bool> {
     if parameters.get_item("data")?.is_some()
         || parameters.get_item("input")?.is_some()
@@ -1387,6 +1454,27 @@ fn data_handlers_for_result(result: &pyrth_core::EvaluationResult) -> Vec<String
     handlers
 }
 
+fn evaluation_result_keys(result: &pyrth_core::EvaluationResult) -> Vec<String> {
+    let mut keys = vec![
+        "time".to_string(),
+        "impedance".to_string(),
+        "log_time".to_string(),
+    ];
+    if result.derivative.is_some() {
+        keys.push("derivative".to_string());
+    }
+    if result.time_spectrum.is_some() {
+        keys.push("time_spec".to_string());
+    }
+    if result.foster.is_some() {
+        keys.push("foster".to_string());
+    }
+    if result.cauer.is_some() {
+        keys.push("cauer".to_string());
+    }
+    keys
+}
+
 fn foster_network_to_dict(
     py: Python<'_>,
     foster: &pyrth_core::FosterNetwork,
@@ -1521,6 +1609,19 @@ fn require_object_list(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Ve
         .map_err(|err| PyValueError::new_err(format!("{key} must be a sequence: {err}")))
 }
 
+fn require_first_item<'py>(
+    parameters: &Bound<'py, PyDict>,
+    keys: &[&str],
+    missing_message: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    for key in keys {
+        if let Some(value) = parameters.get_item(key)? {
+            return Ok(value);
+        }
+    }
+    Err(PyValueError::new_err(missing_message.to_string()))
+}
+
 fn clone_dict<'py>(
     py: Python<'py>,
     parameters: &Bound<'py, PyDict>,
@@ -1589,26 +1690,6 @@ fn require_first_usize(parameters: &Bound<'_, PyDict>, keys: &[&str]) -> PyResul
     }
     Err(PyValueError::new_err(format!(
         "{} is required",
-        keys.join(" or ")
-    )))
-}
-
-fn require_first_dict<'py>(
-    parameters: &Bound<'py, PyDict>,
-    keys: &[&str],
-    missing_message: &str,
-) -> PyResult<Bound<'py, PyDict>> {
-    for key in keys {
-        if let Some(value) = parameters.get_item(key)? {
-            return value
-                .downcast::<PyDict>()
-                .cloned()
-                .map_err(|err| PyValueError::new_err(format!("{key} must be a dict: {err}")));
-        }
-    }
-
-    Err(PyValueError::new_err(format!(
-        "{missing_message}; missing {}",
         keys.join(" or ")
     )))
 }

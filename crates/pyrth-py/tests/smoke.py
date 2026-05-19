@@ -140,7 +140,17 @@ def main() -> None:
     assert smoke_object.time == [point[0] for point in DATA]
     assert smoke_object.impedance == [point[1] for point in DATA]
     assert "impedance" in smoke_object.data_handlers
+    assert sorted(smoke_object.keys()) == ["impedance", "log_time", "time"]
+    assert smoke_object["impedance"] == smoke_object.impedance
+    assert smoke_object.get("missing", "fallback") == "fallback"
+    assert "time" in smoke_object
     assert smoke_object.to_dict()["impedance"] == smoke_object.impedance
+    try:
+        smoke_object["missing"]
+    except KeyError:
+        pass
+    else:
+        raise AssertionError("missing StructureFunction key should raise KeyError")
 
     csv_dir = REPO_ROOT / "target" / "tmp" / "pyrth-py-smoke-csv"
     shutil.rmtree(csv_dir, ignore_errors=True)
@@ -177,11 +187,16 @@ def main() -> None:
             "lasso_max_iter": 2,
             "lasso_tol": 1e-3,
             "precision": 64,
+            "label": "lasso_object",
         }
     )
     assert "time_spec" in lasso_module
     assert len(lasso_module["time_spec"]) == 4
     assert all(math.isfinite(value) for value in lasso_module["time_spec"])
+    lasso_object = evaluation.module("lasso_object")
+    assert "time_spec" in lasso_object
+    assert lasso_object["time_spec"] == lasso_module["time_spec"]
+    assert "time_spec" in lasso_object.keys()
 
     theoretical = pyrth_py.theoretical_impedance([1.0, 2.0], [0.5, 1.5], 1e-6, 1e-2, 8)
     assert sorted(theoretical) == ["impedance", "time"]
@@ -369,6 +384,9 @@ def main() -> None:
         {"reference": lasso_module, "candidate": lasso_module}
     )
     assert comparison_facade == comparison
+
+    comparison_object = evaluation.comparison(lasso_object, lasso_module)
+    assert comparison_object == comparison
 
     try:
         evaluation.comparison({"reference": lasso_module})
