@@ -160,6 +160,12 @@ pub struct EvaluationParams {
     pub power_scale_factor: f64,
     pub optical_power: f64,
     pub is_heating: bool,
+    #[serde(default)]
+    pub extrapolate: bool,
+    #[serde(default)]
+    pub lower_fit_limit: Option<f64>,
+    #[serde(default)]
+    pub upper_fit_limit: Option<f64>,
     pub data_cut_lower: usize,
     pub data_cut_upper: Option<usize>,
     pub temp_0_avg_range: (usize, usize),
@@ -192,6 +198,9 @@ impl Default for EvaluationParams {
             power_scale_factor: 1.0,
             optical_power: 0.0,
             is_heating: false,
+            extrapolate: false,
+            lower_fit_limit: None,
+            upper_fit_limit: None,
             data_cut_lower: 0,
             data_cut_upper: None,
             temp_0_avg_range: (0, 1),
