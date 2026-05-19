@@ -119,6 +119,10 @@ implementation remains the reference implementation.
     with common result attributes, `to_dict()`, dict-like key access,
     iteration over result keys, and compatibility with
     `Evaluation().comparison(...)`
+  - PyO3 `StructureFunction` exposes Python-style array aliases including
+    `imp_deriv_interp`, `log_time_interp`, `therm_resist_fost`,
+    `therm_capa_fost`, `cau_res`, `cau_cap`, `int_cau_res`, `int_cau_cap`,
+    and `diff_struc` when the underlying result contains them
   - `Evaluation().module(label)` returns a registered `StructureFunction`
     object by label
   - `Evaluation().save_as_csv(output_dir="output/csv")`,
@@ -214,9 +218,9 @@ Lanczos Cauer coverage currently checks:
   deltas without changing production output.
 - PyO3 standard-evaluation methods now return minimal `StructureFunction`
   objects instead of plain dictionaries while preserving dict-like read access
-  for smoke-level compatibility.  CSV and simple SVG figure export work through
-  registered modules.  Full Python object behavior and Matplotlib-style figure
-  parity are still missing.
+  and common Python-style array aliases for smoke-level compatibility.  CSV and
+  simple SVG figure export work through registered modules.  Full Python object
+  behavior and Matplotlib-style figure parity are still missing.
 - Adaptive deconvolution is a minimal deterministic sparse implementation, not
   full Python adaptive parity.
 - MPFR structure methods and full Python optimization parity are only partly

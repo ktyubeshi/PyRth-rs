@@ -156,6 +156,8 @@ Goal:
   now returns both CSV and figure path dictionaries.
 - PyO3 standard-evaluation methods now return minimal `StructureFunction`
   objects with dict-like read access rather than bare dictionaries.
+- PyO3 `StructureFunction` also exposes common Python-style array aliases for
+  derivative, Foster, and Cauer outputs when present.
 
 ### H. Theoretical Bootstrap
 
