@@ -14,11 +14,14 @@ implementation remains the reference implementation.
   - Bayesian + Lanczos reference fixtures for MOSFET TIM, MOSFET dry, and LED
 - Rust core pipeline for direct two-column inputs:
   - `input_mode="impedance"` ingest
-  - `input_mode="temp"` to impedance conversion without extrapolation
+  - `input_mode="temp"` to impedance conversion, including optional
+    early-time square-root extrapolation
   - `input_mode="volt"` to impedance conversion with polynomial calibration,
-    without extrapolation
+    including optional early-time square-root extrapolation after voltage to
+    temperature conversion
   - log-time derivative preprocessing
   - Bayesian deconvolution
+  - Fourier deconvolution with the default unity filter path
   - Foster network conversion
   - Lanczos Cauer conversion
 - Core CSV export:
@@ -42,6 +45,7 @@ implementation remains the reference implementation.
   - `--min-index`
   - `--minimum-window-size`
   - `--input-mode`
+  - `--deconv`
   - `--power-step`
   - `--power-scale-factor`
   - `--optical-power`
@@ -51,14 +55,18 @@ implementation remains the reference implementation.
   - `--data-cut-lower`
   - `--data-cut-upper`
   - `--temp-zero-range`
+  - `--extrapolate`
+  - `--lower-fit-limit`
+  - `--upper-fit-limit`
 - Minimal PyO3 entrypoint:
   - `evaluate_impedance(data, only_make_z=False, calc_struc=True)`
   - `Evaluation().standard_module({"data": ...})`
   - `standard_module` accepts `input_mode`, `only_make_z`, `calc_struc`,
-    `log_time_size`, `bay_steps`, `blockwise_sum_width`, `power_step`,
-    `power_scale_factor`, `optical_power`, `is_heating`, `calibration`,
-    `kfac_fit_deg`, `data_cut_lower`, `data_cut_upper`, and
-    `temp_0_avg_range`
+    `deconv_mode`, `log_time_size`, `bay_steps`, `blockwise_sum_width`,
+    `power_step`, `power_scale_factor`, `optical_power`, `is_heating`,
+    `calibration`, `kfac_fit_deg`, `data_cut_lower`, `data_cut_upper`,
+    `temp_0_avg_range`, `extrapolate`, `lower_fit_limit`, and
+    `upper_fit_limit`
 
 ## Golden Coverage
 
@@ -84,16 +92,20 @@ Lanczos Cauer coverage currently checks:
 - LED derivative golden equality is not enabled.  Its small-window settings
   hit near-ties in the adaptive estimator and currently diverge by window
   selection in a few positions.
-- CLI/PyO3 only support direct two-column inputs. T3Ster files and
-  extrapolated temp/volt preprocessing are not ported.
+- CLI/PyO3 only support direct two-column inputs. T3Ster files are not ported.
 - PyO3 returns plain Python dictionaries rather than existing Python
   `StructureFunction` objects.
-- Fourier, Lasso, adaptive, MPFR structure methods, optimization, bootstrap,
-  comparison, and temperature prediction are not ported.
+- Fourier filtering options, Lasso, adaptive, MPFR structure methods,
+  optimization, bootstrap, comparison, and temperature prediction are not
+  ported.
+- The next implementation work is split into non-overlapping `jj` slices in
+  `docs/rust-port/parallel-plan.md`.
 
 ## Useful Commands
 
 ```powershell
+jj status
+jj diff --stat
 uv run --python 3.12 --with-editable . python tests/golden/generate_golden.py
 uv run --python 3.12 --with-editable . --with pytest pytest tests/cases/test_standard_module.py -k MOSFET_tim_basic_lanczos
 cargo test
@@ -101,6 +113,7 @@ cargo run -p pyrth-cli -- --input target\tmp\cli-input.csv --output target\tmp\c
 cargo run -p pyrth-cli -- --input target\tmp\cli-input.csv --output target\tmp\cli-full-small --log-time-size 10 --bay-steps 2 --min-index 1 --minimum-window-size 2 --no-structure
 cargo run -p pyrth-cli -- --input target\tmp\temp-input.csv --output target\tmp\cli-temp --input-mode temp --power-step 2 --temp-zero-range 0:1 --only-make-z
 cargo run -p pyrth-cli -- --input target\tmp\volt-input.csv --output target\tmp\cli-volt --input-mode volt --calibration target\tmp\calib.csv --kfac-fit-deg 1 --only-make-z
+cargo run -p pyrth-cli -- --input target\tmp\temp-extrapolate.csv --output target\tmp\cli-temp-extrapolate --input-mode temp --extrapolate --lower-fit-limit 4 --upper-fit-limit 16 --only-make-z
 uvx maturin develop --manifest-path crates/pyrth-py/Cargo.toml
 .\.venv\Scripts\python.exe crates\pyrth-py\tests\smoke.py
 ```
