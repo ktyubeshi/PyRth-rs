@@ -33,6 +33,8 @@ implementation remains the reference implementation.
     checks, and impedance residual norms
   - deterministic bounded coordinate-search solver for Foster RC parameters
   - standard temperature prediction by interpolating power and impulse response
+  - reusable temperature prediction helpers from explicit impulse responses,
+    Foster RC parameters, and optimization results
   - comparison metrics for two evaluated results
   - deterministic bootstrap means from theoretical RC models
 - T3Ster text helpers:
@@ -98,6 +100,8 @@ implementation remains the reference implementation.
   - `Evaluation().standard_module({"data": ...})`
   - `Evaluation().standard(...)` and `Evaluation().standard_module_set(...)`
     as thin aliases over `standard_module`
+  - `Evaluation().save_as_csv(output_dir="output/csv")` and `save_all(...)`
+    for the last standard-evaluation result through the core CSV exporter
   - `Evaluation().theoretical({...})`, `Evaluation().bootstrap({...})`,
     `Evaluation().optimization({...})`, and
     `Evaluation().temperature_prediction({...})` as dict-parameter facades
@@ -133,6 +137,7 @@ Strict golden comparisons currently cover:
 - Adaptive smoke coverage for finite, non-negative sparse spectrum
 - theoretical single/multiple RC impedance generation
 - standard temperature prediction finite output
+- Foster RC and optimization-result temperature prediction helper behavior
 - comparison metric behavior for spectra, structure functions, and resistance
 - optimization helper validation, flatten/unflatten, bounds, and theoretical
   impedance residuals, including bounded coordinate-search improvement checks
@@ -164,7 +169,9 @@ Lanczos Cauer coverage currently checks:
 - PyO3 returns plain Python dictionaries rather than existing Python
   `StructureFunction` objects.  The current compatibility layer exposes the
   high-level `Evaluation` methods as dict-parameter facades, but it does not
-  preserve Python object attributes, `data_handlers`, labels, or exporter hooks.
+  preserve Python object attributes, `data_handlers`, labels, or module
+  registration.  `Evaluation` now keeps the last standard-evaluation result for
+  `save_as_csv(...)`, but that is only a first CSV-export compatibility slice.
 - Adaptive deconvolution is a minimal deterministic sparse implementation, not
   full Python adaptive parity.
 - MPFR structure methods and full Python optimization parity are only partly
@@ -176,8 +183,10 @@ Lanczos Cauer coverage currently checks:
   `Evaluation` dict facades only.  They do not port Python's wider
   `bootstrap_*`/`comparison_module` orchestration, iterable module-set handling,
   result module registration, or exporter parity.
-- Temperature prediction currently supports standard-evaluation impulse
-  responses only; optimization-based prediction is not ported.
+- Temperature prediction core helpers now support explicit impulse responses,
+  Foster RC parameters, and `OptimizationResult` parameters, but the PyO3
+  `temperature_prediction` facade still does not run a full optimization module
+  internally like Python's orchestration layer.
 - The next implementation work is split into non-overlapping `jj` slices in
   `docs/rust-port/parallel-plan.md`.
 

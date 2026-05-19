@@ -9,6 +9,7 @@ Run after installing the extension into the active Python environment:
 from __future__ import annotations
 
 import math
+import shutil
 from pathlib import Path
 
 import pyrth_py
@@ -63,6 +64,13 @@ def main() -> None:
         {"data": DATA, "only_make_z": True, "structure_method": "lanczos"}
     )
     assert_impedance_only(module_set)
+
+    csv_dir = REPO_ROOT / "target" / "tmp" / "pyrth-py-smoke-csv"
+    shutil.rmtree(csv_dir, ignore_errors=True)
+    saved = evaluation.save_as_csv(str(csv_dir))
+    assert sorted(saved) == ["impedance"]
+    assert Path(saved["impedance"]).exists()
+    assert Path(saved["impedance"]).read_text().splitlines()[0] == "time,impedance"
 
     lasso_module = evaluation.standard_module(
         {

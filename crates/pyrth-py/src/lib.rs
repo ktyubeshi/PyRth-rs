@@ -1,18 +1,22 @@
 //! Python extension crate for the PyRth Rust port.
 
-use std::fs;
+use std::{fs, path::Path, sync::RwLock};
 
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 pub use pyrth_core::*;
 
 #[pyclass]
-struct Evaluation;
+struct Evaluation {
+    last_result: RwLock<Option<pyrth_core::EvaluationResult>>,
+}
 
 #[pymethods]
 impl Evaluation {
     #[new]
     fn new() -> Self {
-        Self
+        Self {
+            last_result: RwLock::new(None),
+        }
     }
 
     fn standard(&self, py: Python<'_>, parameters: &Bound<'_, PyDict>) -> PyResult<PyObject> {
@@ -213,7 +217,37 @@ impl Evaluation {
         };
         let input = extract_transient_input(parameters, &mut overrides)?;
 
-        evaluate_transient_input_with_params(py, input, overrides)
+        let (output, result) = evaluate_transient_input_with_result(py, input, overrides)?;
+        *self
+            .last_result
+            .write()
+            .map_err(|_| PyValueError::new_err("failed to lock Evaluation result state"))? =
+            Some(result);
+        Ok(output)
+    }
+
+    #[pyo3(signature = (output_dir="output/csv"))]
+    fn save_as_csv(&self, py: Python<'_>, output_dir: &str) -> PyResult<PyObject> {
+        let Some(result) = self
+            .last_result
+            .read()
+            .map_err(|_| PyValueError::new_err("failed to lock Evaluation result state"))?
+            .as_ref()
+            .cloned()
+        else {
+            return Err(PyValueError::new_err(
+                "save_as_csv requires a previous standard_module, standard, or standard_module_set call",
+            ));
+        };
+        let files = pyrth_core::export_csv(&result, output_dir)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+        exported_csv_files_to_dict(py, files)
+    }
+
+    #[pyo3(signature = (output_dir="output/csv"))]
+    fn save_all(&self, py: Python<'_>, output_dir: &str) -> PyResult<PyObject> {
+        self.save_as_csv(py, output_dir)
     }
 }
 
@@ -655,12 +689,14 @@ fn evaluate_impedance_with_params(
     evaluate_impedance_with_input(py, input, overrides)
 }
 
-fn evaluate_transient_input_with_params(
+fn evaluate_transient_input_with_result(
     py: Python<'_>,
     input: pyrth_core::TransientInput,
     overrides: EvalOverrides,
-) -> PyResult<PyObject> {
-    evaluate_impedance_with_input(py, input, overrides)
+) -> PyResult<(PyObject, pyrth_core::EvaluationResult)> {
+    let result = evaluate_result_with_input(input, overrides)?;
+    let output = evaluation_result_to_dict(py, result.clone())?;
+    Ok((output, result))
 }
 
 fn evaluate_impedance_with_input(
@@ -668,6 +704,14 @@ fn evaluate_impedance_with_input(
     input: pyrth_core::TransientInput,
     overrides: EvalOverrides,
 ) -> PyResult<PyObject> {
+    let result = evaluate_result_with_input(input, overrides)?;
+    evaluation_result_to_dict(py, result)
+}
+
+fn evaluate_result_with_input(
+    input: pyrth_core::TransientInput,
+    overrides: EvalOverrides,
+) -> PyResult<pyrth_core::EvaluationResult> {
     let mut params = pyrth_core::EvaluationParams::default();
     if let Some(input_mode) = overrides.input_mode {
         params.input_mode = pyrth_core::InputMode::from_label(&input_mode)
@@ -773,6 +817,13 @@ fn evaluate_impedance_with_input(
     let result = pyrth_core::evaluate(input, &params)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
+    Ok(result)
+}
+
+fn evaluation_result_to_dict(
+    py: Python<'_>,
+    result: pyrth_core::EvaluationResult,
+) -> PyResult<PyObject> {
     let output = PyDict::new(py);
     output.set_item("time", result.impedance.time.to_vec())?;
     output.set_item("impedance", result.impedance.impedance.to_vec())?;
@@ -821,6 +872,34 @@ fn evaluate_impedance_with_input(
     }
 
     Ok(output.into())
+}
+
+fn exported_csv_files_to_dict(
+    py: Python<'_>,
+    files: pyrth_core::ExportedCsvFiles,
+) -> PyResult<PyObject> {
+    let output = PyDict::new(py);
+    output.set_item("impedance", path_to_string(&files.impedance))?;
+    if let Some(path) = files.imp_deriv {
+        output.set_item("imp_deriv", path_to_string(&path))?;
+    }
+    if let Some(path) = files.time_spec {
+        output.set_item("time_spec", path_to_string(&path))?;
+    }
+    if let Some(path) = files.foster {
+        output.set_item("foster", path_to_string(&path))?;
+    }
+    if let Some(path) = files.cauer {
+        output.set_item("cauer", path_to_string(&path))?;
+    }
+    if let Some(path) = files.diff_struc {
+        output.set_item("diff_struc", path_to_string(&path))?;
+    }
+    Ok(output.into())
+}
+
+fn path_to_string(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
 }
 
 #[pymodule]

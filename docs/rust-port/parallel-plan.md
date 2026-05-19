@@ -112,8 +112,9 @@ Goal:
 
 ### F. Theoretical And Prediction
 
-Status: theoretical RC impedance generation and standard temperature prediction
-are implemented in core.
+Status: theoretical RC impedance generation, standard temperature prediction,
+and reusable RC/optimization-result temperature prediction helpers are
+implemented in core.
 
 Owned paths:
 
@@ -125,7 +126,8 @@ Owned paths:
 Goal:
 
 - Build the foundation for comparison, bootstrap-from-theoretical, and
-  temperature prediction workflows.
+  temperature prediction workflows.  The remaining work is PyO3/Python-style
+  orchestration that runs an optimization module internally before prediction.
 
 ### G. Comparison Metrics
 
