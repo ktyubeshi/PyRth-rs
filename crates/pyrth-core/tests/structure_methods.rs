@@ -7,8 +7,10 @@ use pyrth_core::network::{
 };
 use pyrth_core::{
     error::PyrthError,
-    network::{cauer_from_foster_poly_long_f64, foster_impedance_rational_f64},
-    DeconvMode, EvaluationParams, StructureMethod, TransientInput,
+    network::{
+        cauer_from_foster_lanczos, cauer_from_foster_poly_long_f64, foster_impedance_rational_f64,
+    },
+    CauerNetwork, DeconvMode, EvaluationParams, StructureMethod, TransientInput,
 };
 
 #[test]
@@ -23,6 +25,68 @@ fn foster_impedance_rational_f64_matches_two_parallel_branches() {
     assert_relative_eq!(rational.denominator[0], 1.0);
     assert_relative_eq!(rational.denominator[1], 31.0);
     assert_relative_eq!(rational.denominator[2], 210.0);
+}
+
+#[test]
+fn lanczos_converts_single_foster_branch_without_non_finite_tail() {
+    let resistance = array![2.0];
+    let capacitance = array![3.0];
+    let params = EvaluationParams {
+        blockwise_sum_width: 1,
+        ..EvaluationParams::default()
+    };
+
+    let cauer = cauer_from_foster_lanczos(&capacitance, &resistance, &params);
+
+    assert_eq!(cauer.resistance.len(), 1);
+    assert_eq!(cauer.capacitance.len(), 1);
+    assert_relative_eq!(cauer.resistance[0], 2.0, epsilon = 1e-12);
+    assert_relative_eq!(cauer.capacitance[0], 3.0, epsilon = 1e-12);
+    assert_lanczos_cauer_is_physical(&cauer);
+    assert!(cauer.differential_structure.is_empty());
+}
+
+#[test]
+fn lanczos_two_branch_cauer_stays_finite_positive_and_monotonic() {
+    let resistance = array![2.0, 3.0];
+    let capacitance = array![5.0, 7.0];
+    let params = EvaluationParams {
+        blockwise_sum_width: 1,
+        ..EvaluationParams::default()
+    };
+
+    let cauer = cauer_from_foster_lanczos(&capacitance, &resistance, &params);
+
+    assert!(cauer.resistance.len() >= 2);
+    assert_eq!(cauer.resistance.len(), cauer.capacitance.len());
+    assert_lanczos_cauer_is_physical(&cauer);
+}
+
+fn assert_lanczos_cauer_is_physical(cauer: &CauerNetwork) {
+    assert!(!cauer.resistance.is_empty());
+    assert!(!cauer.capacitance.is_empty());
+    assert!(cauer
+        .resistance
+        .iter()
+        .all(|value| value.is_finite() && *value > 0.0));
+    assert!(cauer
+        .capacitance
+        .iter()
+        .all(|value| value.is_finite() && *value > 0.0));
+    assert!(cauer
+        .cumulative_resistance
+        .windows(2)
+        .into_iter()
+        .all(|window| window[1] >= window[0]));
+    assert!(cauer
+        .cumulative_capacitance
+        .windows(2)
+        .into_iter()
+        .all(|window| window[1] >= window[0]));
+    assert!(cauer
+        .differential_structure
+        .iter()
+        .all(|value| value.is_finite()));
 }
 
 #[test]

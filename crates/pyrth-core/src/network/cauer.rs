@@ -66,6 +66,10 @@ fn lanczos_inner(cap_fost: &[f64], res_fost: &[f64]) -> (Vec<f64>, Vec<f64>) {
     let mut cap_sum = 0.0;
 
     while cap_sum < 1e4 {
+        if !beta_next.is_finite() || beta_next <= 0.0 {
+            break;
+        }
+
         u = r.iter().map(|value| value / beta_next).collect::<Vec<_>>();
         let alpha = -dot_k(&u, &k_diag);
         r = next_residual(&k_diag, c_diag, &u, beta_next, &v, alpha);
@@ -76,7 +80,7 @@ fn lanczos_inner(cap_fost: &[f64], res_fost: &[f64]) -> (Vec<f64>, Vec<f64>) {
         let cap_next = 1.0 / (beta_prev.powf(2.0) * res_prev.powf(2.0) * cap_prev);
         let res_next = -1.0 / (alpha * cap_next + 1.0 / res_prev);
 
-        if res_next <= 0.0 || cap_next <= 0.0 {
+        if !res_next.is_finite() || res_next <= 0.0 || !cap_next.is_finite() || cap_next <= 0.0 {
             break;
         }
 
