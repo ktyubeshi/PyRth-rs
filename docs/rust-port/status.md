@@ -19,6 +19,8 @@ implementation remains the reference implementation.
   - `input_mode="volt"` to impedance conversion with polynomial calibration,
     including optional early-time square-root extrapolation after voltage to
     temperature conversion
+  - post-preprocessing evaluation input validation so cut/extrapolated inputs
+    fail with `InvalidParameter` instead of reaching derivative panics
   - log-time derivative preprocessing
   - Bayesian deconvolution
   - Fourier deconvolution with `hann`, `rectangular`, `gauss`, `fermi`,
@@ -172,6 +174,7 @@ implementation remains the reference implementation.
     `is_heating`, `calibration`, `kfac_fit_deg`, `data_cut_lower`,
     `data_cut_upper`, `temp_0_avg_range`, `extrapolate`,
     `lower_fit_limit`, and `upper_fit_limit`
+  - `calib` as a Python-compatible alias for voltage `calibration`
 
 ## Golden Coverage
 
@@ -198,7 +201,8 @@ Lanczos Cauer coverage currently checks:
 - non-empty, finite, non-negative Cauer branches
 - monotonic cumulative resistance
 - finite positive single/two-branch Lanczos Cauer outputs without non-finite
-  tails
+  tails, including short networks with `blockwise_sum_width` larger than the
+  branch count
 - ignored diagnostic coverage for full-array Cauer equality drift; run
   `cargo test -p pyrth-core --test golden diagnostic_lanczos_cauer_full_array_golden_equality -- --ignored --nocapture`
   to report the Rust/Python length, first mismatch, maximum absolute drift, and

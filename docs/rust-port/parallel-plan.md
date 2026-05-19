@@ -38,7 +38,9 @@ cargo test -p pyrth-core
 
 ### B. Temperature Extrapolation
 
-Status: implemented in core and wired through CLI/PyO3.
+Status: implemented in core and wired through CLI/PyO3.  Temperature and voltage
+preprocessing now reject non-positive effective power and the evaluation
+pipeline validates the post-preprocessing sample count before derivative work.
 
 Owned paths:
 
@@ -162,6 +164,8 @@ Goal:
   now returns both CSV and figure path dictionaries.
 - PyO3 `save_as_csv`, `save_figures`, and `save_all` also export labeled
   temperature-prediction modules.
+- PyO3 voltage input accepts both `calibration` and the Python-compatible
+  `calib` alias.
 - CLI `--figures-output` writes the same simple SVG figures next to the
   existing CSV output path when requested.
 - Core SVG export now records and applies simple linear/log axis scales for the
@@ -202,6 +206,8 @@ cannot currently build `gmp-mpfr-sys`, so MPFR verification needs a supported
 GNU/Linux or Windows GNU toolchain.  Lanczos Cauer now stops before non-finite
 tails and has finite positive single/two-branch guards, but full-array Python
 golden equality remains unresolved.
+Short Lanczos networks are preserved when `blockwise_sum_width` is larger than
+the branch count.
 
 Owned paths:
 
