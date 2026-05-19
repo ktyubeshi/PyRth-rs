@@ -1,0 +1,20 @@
+[workspace]
+members = [
+    "crates/pyrth-core",
+    "crates/pyrth-py",
+    "crates/pyrth-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/nizie002/PyRth"
+
+[workspace.dependencies]
+approx = "0.5"
+ndarray = { version = "0.16", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
