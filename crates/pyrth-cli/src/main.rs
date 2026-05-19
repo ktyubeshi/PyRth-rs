@@ -1,13 +1,15 @@
 use std::{
     env,
     error::Error,
-    fs::File,
+    fs::{self, File},
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
 };
 
 use pyrth_core::{
-    evaluate, export_csv, DeconvMode, EvaluationParams, FourierFilter, InputMode, TransientInput,
+    evaluate, export_csv, parse_t3ster_calibration_text, parse_t3ster_power_step,
+    parse_t3ster_raw_text, t3ster_raw_to_temperature_input, DeconvMode, EvaluationParams,
+    FourierFilter, InputMode, TransientInput,
 };
 
 fn main() {
@@ -19,10 +21,18 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn Error>> {
     let args = CliArgs::parse(env::args().skip(1))?;
-    let input = read_two_column_data(&args.input)?;
 
     let mut params = EvaluationParams::default();
-    params.input_mode = args.input_mode;
+    if let Some(kfac_fit_deg) = args.kfac_fit_deg {
+        params.kfac_fit_deg = kfac_fit_deg;
+    }
+    let input = if args.input_mode == InputMode::T3ster {
+        params.input_mode = InputMode::Temperature;
+        read_t3ster_input(&args, &mut params)?
+    } else {
+        params.input_mode = args.input_mode;
+        read_two_column_data(&args.input)?
+    };
     params.deconv_mode = args.deconv_mode;
     params.filter_name = args.filter_name;
     if let Some(filter_range) = args.filter_range {
@@ -58,9 +68,6 @@ fn run() -> Result<(), Box<dyn Error>> {
         params.optical_power = optical_power;
     }
     params.is_heating = args.is_heating;
-    if let Some(kfac_fit_deg) = args.kfac_fit_deg {
-        params.kfac_fit_deg = kfac_fit_deg;
-    }
     if let Some(calibration_path) = args.calibration.as_ref() {
         params.calibration = Some(read_calibration_data(calibration_path)?);
     }
@@ -104,6 +111,8 @@ struct CliArgs {
     is_heating: bool,
     kfac_fit_deg: Option<usize>,
     calibration: Option<PathBuf>,
+    t3ster_power: Option<PathBuf>,
+    t3ster_calibration: Option<PathBuf>,
     data_cut_lower: Option<usize>,
     data_cut_upper: Option<usize>,
     temp_0_avg_range: Option<(usize, usize)>,
@@ -134,6 +143,8 @@ impl CliArgs {
         let mut is_heating = false;
         let mut kfac_fit_deg = None;
         let mut calibration = None;
+        let mut t3ster_power = None;
+        let mut t3ster_calibration = None;
         let mut data_cut_lower = None;
         let mut data_cut_upper = None;
         let mut temp_0_avg_range = None;
@@ -195,6 +206,8 @@ impl CliArgs {
                     kfac_fit_deg = Some(parse_next_usize(&mut args, "--kfac-fit-deg")?)
                 }
                 "--calibration" => calibration = args.next().map(PathBuf::from),
+                "--t3ster-power" => t3ster_power = args.next().map(PathBuf::from),
+                "--t3ster-calibration" => t3ster_calibration = args.next().map(PathBuf::from),
                 "--data-cut-lower" => {
                     data_cut_lower = Some(parse_next_usize(&mut args, "--data-cut-lower")?)
                 }
@@ -238,6 +251,8 @@ impl CliArgs {
             is_heating,
             kfac_fit_deg,
             calibration,
+            t3ster_power,
+            t3ster_calibration,
             data_cut_lower,
             data_cut_upper,
             temp_0_avg_range,
@@ -250,7 +265,7 @@ impl CliArgs {
 
 fn print_usage() {
     println!(
-        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt] [--deconv bayesian|fourier] [--filter-name hann|rectangular|gauss|fermi|nuttall|blackman_nuttall|blackman_harris] [--filter-range <x>] [--filter-parameter <x>] [--power-step <w>] [--power-scale-factor <x>] [--optical-power <w>] [--is-heating] [--calibration <path>] [--kfac-fit-deg <n>] [--data-cut-lower <n>] [--data-cut-upper <n>] [--temp-zero-range <start:end>] [--extrapolate --lower-fit-limit <t> --upper-fit-limit <t>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
+        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt|t3ster] [--deconv bayesian|fourier] [--filter-name hann|rectangular|gauss|fermi|nuttall|blackman_nuttall|blackman_harris] [--filter-range <x>] [--filter-parameter <x>] [--power-step <w>] [--power-scale-factor <x>] [--optical-power <w>] [--is-heating] [--calibration <path>] [--t3ster-power <path>] [--t3ster-calibration <path>] [--kfac-fit-deg <n>] [--data-cut-lower <n>] [--data-cut-upper <n>] [--temp-zero-range <start:end>] [--extrapolate --lower-fit-limit <t> --upper-fit-limit <t>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
     );
 }
 
@@ -337,4 +352,23 @@ fn read_calibration_data(path: &Path) -> Result<Vec<[f64; 2]>, Box<dyn Error>> {
         .zip(input.value.iter())
         .map(|(temperature, voltage)| [*temperature, *voltage])
         .collect())
+}
+
+fn read_t3ster_input(
+    args: &CliArgs,
+    params: &mut EvaluationParams,
+) -> Result<TransientInput, Box<dyn Error>> {
+    let raw = parse_t3ster_raw_text(&fs::read_to_string(&args.input)?)?;
+    let calibration_path = args
+        .t3ster_calibration
+        .as_ref()
+        .or(args.calibration.as_ref())
+        .ok_or("--input-mode t3ster requires --t3ster-calibration or --calibration")?;
+    let calibration = parse_t3ster_calibration_text(&fs::read_to_string(calibration_path)?)?;
+
+    if let Some(power_path) = args.t3ster_power.as_ref() {
+        params.power_step = parse_t3ster_power_step(&fs::read_to_string(power_path)?)?;
+    }
+
+    t3ster_raw_to_temperature_input(&raw, &calibration, params.kfac_fit_deg).map_err(Into::into)
 }
