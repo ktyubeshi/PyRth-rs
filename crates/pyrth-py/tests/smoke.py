@@ -135,6 +135,12 @@ def main() -> None:
     assert "smoke" in labels
     assert "smoke_1" in labels
     assert evaluation.module_count() == len(labels)
+    smoke_object = evaluation.module("smoke")
+    assert smoke_object.label == "smoke"
+    assert smoke_object.time == [point[0] for point in DATA]
+    assert smoke_object.impedance == [point[1] for point in DATA]
+    assert "impedance" in smoke_object.data_handlers
+    assert smoke_object.to_dict()["impedance"] == smoke_object.impedance
 
     csv_dir = REPO_ROOT / "target" / "tmp" / "pyrth-py-smoke-csv"
     shutil.rmtree(csv_dir, ignore_errors=True)

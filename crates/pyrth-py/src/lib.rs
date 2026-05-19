@@ -9,6 +9,71 @@ use pyo3::{
 };
 pub use pyrth_core::*;
 
+#[pyclass(name = "StructureFunction")]
+#[derive(Clone)]
+struct PyStructureFunction {
+    label: String,
+    result: pyrth_core::EvaluationResult,
+}
+
+#[pymethods]
+impl PyStructureFunction {
+    #[getter]
+    fn label(&self) -> String {
+        self.label.clone()
+    }
+
+    #[getter]
+    fn data_handlers(&self) -> Vec<String> {
+        data_handlers_for_result(&self.result)
+    }
+
+    #[getter]
+    fn time(&self) -> Vec<f64> {
+        self.result.impedance.time.to_vec()
+    }
+
+    #[getter]
+    fn impedance(&self) -> Vec<f64> {
+        self.result.impedance.impedance.to_vec()
+    }
+
+    #[getter]
+    fn log_time(&self) -> Vec<f64> {
+        self.result.impedance.log_time.to_vec()
+    }
+
+    #[getter]
+    fn time_spec(&self) -> Option<Vec<f64>> {
+        self.result
+            .time_spectrum
+            .as_ref()
+            .map(|time_spectrum| time_spectrum.to_vec())
+    }
+
+    #[getter]
+    fn foster(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+        self.result
+            .foster
+            .as_ref()
+            .map(|foster| foster_network_to_dict(py, foster))
+            .transpose()
+    }
+
+    #[getter]
+    fn cauer(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+        self.result
+            .cauer
+            .as_ref()
+            .map(|cauer| cauer_network_to_dict(py, cauer))
+            .transpose()
+    }
+
+    fn to_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
+        evaluation_result_to_dict(py, self.result.clone())
+    }
+}
+
 #[pyclass]
 struct Evaluation {
     last_result: RwLock<Option<pyrth_core::EvaluationResult>>,
@@ -358,6 +423,23 @@ impl Evaluation {
             .read()
             .map_err(|_| PyValueError::new_err("failed to lock Evaluation modules"))?
             .len())
+    }
+
+    fn module(&self, py: Python<'_>, label: &str) -> PyResult<Py<PyStructureFunction>> {
+        let result = self
+            .modules
+            .read()
+            .map_err(|_| PyValueError::new_err("failed to lock Evaluation modules"))?
+            .get(label)
+            .cloned()
+            .ok_or_else(|| PyValueError::new_err(format!("module '{label}' was not found")))?;
+        Py::new(
+            py,
+            PyStructureFunction {
+                label: label.to_string(),
+                result,
+            },
+        )
     }
 
     fn standard_module_sweep(
@@ -1294,6 +1376,47 @@ fn evaluation_result_to_dict(
     Ok(output.into())
 }
 
+fn data_handlers_for_result(result: &pyrth_core::EvaluationResult) -> Vec<String> {
+    let mut handlers = vec!["impedance".to_string()];
+    if result.time_spectrum.is_some() {
+        handlers.push("time_spec".to_string());
+    }
+    if result.cauer.is_some() {
+        handlers.push("structure".to_string());
+    }
+    handlers
+}
+
+fn foster_network_to_dict(
+    py: Python<'_>,
+    foster: &pyrth_core::FosterNetwork,
+) -> PyResult<PyObject> {
+    let foster_dict = PyDict::new(py);
+    foster_dict.set_item("resistance", foster.resistance.to_vec())?;
+    foster_dict.set_item("capacitance", foster.capacitance.to_vec())?;
+    foster_dict.set_item("tau", foster.tau.to_vec())?;
+    Ok(foster_dict.into())
+}
+
+fn cauer_network_to_dict(py: Python<'_>, cauer: &pyrth_core::CauerNetwork) -> PyResult<PyObject> {
+    let cauer_dict = PyDict::new(py);
+    cauer_dict.set_item("resistance", cauer.resistance.to_vec())?;
+    cauer_dict.set_item("capacitance", cauer.capacitance.to_vec())?;
+    cauer_dict.set_item(
+        "cumulative_resistance",
+        cauer.cumulative_resistance.to_vec(),
+    )?;
+    cauer_dict.set_item(
+        "cumulative_capacitance",
+        cauer.cumulative_capacitance.to_vec(),
+    )?;
+    cauer_dict.set_item(
+        "differential_structure",
+        cauer.differential_structure.to_vec(),
+    )?;
+    Ok(cauer_dict.into())
+}
+
 fn exported_csv_files_to_dict(
     py: Python<'_>,
     files: pyrth_core::ExportedCsvFiles,
@@ -1325,6 +1448,7 @@ fn path_to_string(path: &Path) -> String {
 #[pymodule]
 fn pyrth_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Evaluation>()?;
+    m.add_class::<PyStructureFunction>()?;
     m.add_function(wrap_pyfunction!(evaluate_impedance, m)?)?;
     m.add_function(wrap_pyfunction!(theoretical_impedance, m)?)?;
     m.add_function(wrap_pyfunction!(bootstrap_theoretical, m)?)?;
