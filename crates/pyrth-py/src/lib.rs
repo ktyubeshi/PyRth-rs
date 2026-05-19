@@ -710,7 +710,13 @@ fn bootstrap_theoretical(
 
     let output = PyDict::new(py);
     output.set_item("impedance_mean", result.impedance_mean.to_vec())?;
+    output.set_item("impedance_p10", result.impedance_p10.to_vec())?;
+    output.set_item("impedance_median", result.impedance_median.to_vec())?;
+    output.set_item("impedance_p90", result.impedance_p90.to_vec())?;
     output.set_item("time_spectrum_mean", result.time_spectrum_mean.to_vec())?;
+    output.set_item("time_spectrum_p10", result.time_spectrum_p10.to_vec())?;
+    output.set_item("time_spectrum_median", result.time_spectrum_median.to_vec())?;
+    output.set_item("time_spectrum_p90", result.time_spectrum_p90.to_vec())?;
     output.set_item("successful_repetitions", result.successful_repetitions)?;
     Ok(output.into())
 }

@@ -16,11 +16,39 @@ fn bootstrap_from_theoretical_returns_deterministic_finite_means() {
 
     assert_eq!(result.successful_repetitions, 4);
     assert_eq!(result.impedance_mean.len(), 96);
+    assert_eq!(result.impedance_p10.len(), 96);
+    assert_eq!(result.impedance_median.len(), 96);
+    assert_eq!(result.impedance_p90.len(), 96);
     assert_eq!(result.time_spectrum_mean.len(), 64);
+    assert_eq!(result.time_spectrum_p10.len(), 64);
+    assert_eq!(result.time_spectrum_median.len(), 64);
+    assert_eq!(result.time_spectrum_p90.len(), 64);
     assert!(result.impedance_mean.iter().all(|value| value.is_finite()));
+    assert!(result.impedance_p10.iter().all(|value| value.is_finite()));
+    assert!(result
+        .impedance_median
+        .iter()
+        .all(|value| value.is_finite()));
+    assert!(result.impedance_p90.iter().all(|value| value.is_finite()));
     assert!(result
         .time_spectrum_mean
         .iter()
         .all(|value| value.is_finite()));
+    assert!(result
+        .time_spectrum_p10
+        .iter()
+        .all(|value| value.is_finite()));
+    assert!(result
+        .time_spectrum_median
+        .iter()
+        .all(|value| value.is_finite()));
+    assert!(result
+        .time_spectrum_p90
+        .iter()
+        .all(|value| value.is_finite()));
+    for index in 0..result.impedance_mean.len() {
+        assert!(result.impedance_p10[index] <= result.impedance_median[index]);
+        assert!(result.impedance_median[index] <= result.impedance_p90[index]);
+    }
     assert_eq!(result, repeated);
 }

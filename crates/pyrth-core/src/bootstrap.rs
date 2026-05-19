@@ -13,7 +13,13 @@ use crate::{
 #[derive(Clone, Debug, PartialEq)]
 pub struct BootstrapResult {
     pub impedance_mean: Array1<f64>,
+    pub impedance_p10: Array1<f64>,
+    pub impedance_median: Array1<f64>,
+    pub impedance_p90: Array1<f64>,
     pub time_spectrum_mean: Array1<f64>,
+    pub time_spectrum_p10: Array1<f64>,
+    pub time_spectrum_median: Array1<f64>,
+    pub time_spectrum_p90: Array1<f64>,
     pub successful_repetitions: usize,
 }
 
@@ -55,9 +61,8 @@ pub fn bootstrap_from_theoretical(
         None
     };
     let mut rng = StdRng::seed_from_u64(seed);
-    let mut impedance_sum: Option<Array1<f64>> = None;
-    let mut time_spectrum_sum: Option<Array1<f64>> = None;
-    let mut successful_repetitions = 0usize;
+    let mut impedance_samples: Vec<Array1<f64>> = Vec::new();
+    let mut time_spectrum_samples: Vec<Array1<f64>> = Vec::new();
 
     for _ in 0..repetitions {
         let value = match normal.as_ref() {
@@ -76,24 +81,21 @@ pub fn bootstrap_from_theoretical(
             continue;
         };
 
-        match (&mut impedance_sum, &mut time_spectrum_sum) {
-            (Some(impedance_sum), Some(time_spectrum_sum))
-                if impedance_sum.len() == result.impedance.impedance.len()
-                    && time_spectrum_sum.len() == time_spectrum.len() =>
+        if let (Some(first_impedance), Some(first_spectrum)) =
+            (impedance_samples.first(), time_spectrum_samples.first())
+        {
+            if first_impedance.len() != result.impedance.impedance.len()
+                || first_spectrum.len() != time_spectrum.len()
             {
-                *impedance_sum += &result.impedance.impedance;
-                *time_spectrum_sum += &time_spectrum;
+                continue;
             }
-            (None, None) => {
-                impedance_sum = Some(result.impedance.impedance);
-                time_spectrum_sum = Some(time_spectrum);
-            }
-            _ => continue,
         }
-        successful_repetitions += 1;
+
+        impedance_samples.push(result.impedance.impedance);
+        time_spectrum_samples.push(time_spectrum);
     }
 
-    if successful_repetitions == 0 {
+    if impedance_samples.is_empty() {
         return Err(PyrthError::InvalidParameter {
             parameter: "repetitions",
             expected: "at least one successful evaluation",
@@ -101,12 +103,51 @@ pub fn bootstrap_from_theoretical(
         });
     }
 
-    let scale = successful_repetitions as f64;
+    let impedance_mean = mean_arrays(&impedance_samples);
+    let time_spectrum_mean = mean_arrays(&time_spectrum_samples);
     Ok(BootstrapResult {
-        impedance_mean: impedance_sum.expect("successful repetition initializes impedance") / scale,
-        time_spectrum_mean: time_spectrum_sum
-            .expect("successful repetition initializes time spectrum")
-            / scale,
-        successful_repetitions,
+        impedance_p10: percentile_arrays(&impedance_samples, 0.10),
+        impedance_median: percentile_arrays(&impedance_samples, 0.50),
+        impedance_p90: percentile_arrays(&impedance_samples, 0.90),
+        impedance_mean,
+        time_spectrum_p10: percentile_arrays(&time_spectrum_samples, 0.10),
+        time_spectrum_median: percentile_arrays(&time_spectrum_samples, 0.50),
+        time_spectrum_p90: percentile_arrays(&time_spectrum_samples, 0.90),
+        time_spectrum_mean,
+        successful_repetitions: impedance_samples.len(),
     })
+}
+
+fn mean_arrays(samples: &[Array1<f64>]) -> Array1<f64> {
+    let mut sum = Array1::zeros(samples[0].len());
+    for sample in samples {
+        sum += sample;
+    }
+    sum / samples.len() as f64
+}
+
+fn percentile_arrays(samples: &[Array1<f64>], quantile: f64) -> Array1<f64> {
+    Array1::from_iter((0..samples[0].len()).map(|index| {
+        let mut values = samples
+            .iter()
+            .map(|sample| sample[index])
+            .collect::<Vec<_>>();
+        values.sort_by(|left, right| left.total_cmp(right));
+        interpolate_quantile(&values, quantile)
+    }))
+}
+
+fn interpolate_quantile(values: &[f64], quantile: f64) -> f64 {
+    if values.len() == 1 {
+        return values[0];
+    }
+    let position = quantile.clamp(0.0, 1.0) * (values.len() - 1) as f64;
+    let lower = position.floor() as usize;
+    let upper = position.ceil() as usize;
+    if lower == upper {
+        values[lower]
+    } else {
+        let fraction = position - lower as f64;
+        values[lower] + fraction * (values[upper] - values[lower])
+    }
 }

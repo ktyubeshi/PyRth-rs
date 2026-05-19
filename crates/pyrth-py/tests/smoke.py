@@ -199,7 +199,13 @@ def main() -> None:
     )
     assert bootstrap["successful_repetitions"] == 2
     assert len(bootstrap["impedance_mean"]) == 80
+    assert len(bootstrap["impedance_p10"]) == 80
+    assert len(bootstrap["impedance_median"]) == 80
+    assert len(bootstrap["impedance_p90"]) == 80
     assert len(bootstrap["time_spectrum_mean"]) > 0
+    assert len(bootstrap["time_spectrum_p10"]) == len(bootstrap["time_spectrum_mean"])
+    assert len(bootstrap["time_spectrum_median"]) == len(bootstrap["time_spectrum_mean"])
+    assert len(bootstrap["time_spectrum_p90"]) == len(bootstrap["time_spectrum_mean"])
     assert all(math.isfinite(value) for value in bootstrap["time_spectrum_mean"])
 
     bootstrap_facade = evaluation.bootstrap(
@@ -216,7 +222,11 @@ def main() -> None:
     )
     assert bootstrap_facade["successful_repetitions"] == 2
     assert len(bootstrap_facade["impedance_mean"]) == 80
+    assert len(bootstrap_facade["impedance_median"]) == 80
     assert len(bootstrap_facade["time_spectrum_mean"]) > 0
+    assert len(bootstrap_facade["time_spectrum_median"]) == len(
+        bootstrap_facade["time_spectrum_mean"]
+    )
     assert all(math.isfinite(value) for value in bootstrap_facade["time_spectrum_mean"])
 
     target = pyrth_py.theoretical_impedance([1.0, 3.0], [0.4, 2.0], 1e-3, 1e2, 32)
