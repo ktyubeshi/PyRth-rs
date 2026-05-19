@@ -290,6 +290,30 @@ fn unimplemented_deconvolution_modes_return_errors() {
 }
 
 #[test]
+fn unimplemented_structure_methods_return_errors() {
+    for structure_method in [
+        StructureMethod::Sobhy,
+        StructureMethod::BoorGolub,
+        StructureMethod::Khatwani,
+        StructureMethod::PolyLong,
+    ] {
+        let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
+        let mut params = params_from_fixture(&fixture);
+        params.structure_method = structure_method;
+
+        let input =
+            TransientInput::from_pairs(fixture.input.data.iter().map(|pair| (pair[0], pair[1])))
+                .unwrap();
+        let err = evaluate(input, &params).unwrap_err();
+
+        assert!(matches!(
+            err,
+            PyrthError::UnsupportedStructureMethod(mode) if mode == structure_method.to_string()
+        ));
+    }
+}
+
+#[test]
 fn invalid_evaluation_params_return_errors() {
     let input = TransientInput::from_pairs([(1e-6, 0.1), (1e-5, 0.2)]).unwrap();
     let mut params = EvaluationParams::default();

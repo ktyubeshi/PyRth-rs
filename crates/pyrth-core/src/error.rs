@@ -32,6 +32,9 @@ pub enum PyrthError {
     #[error("unsupported deconvolution mode for this stage: {0}")]
     UnsupportedDeconvolutionMode(String),
 
+    #[error("unsupported structure method for this stage: {0}")]
+    UnsupportedStructureMethod(String),
+
     #[error("unknown {kind} label: {value}")]
     UnknownMode { kind: &'static str, value: String },
 

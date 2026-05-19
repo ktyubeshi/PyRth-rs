@@ -248,7 +248,7 @@ impl Default for EvaluationParams {
         Self {
             input_mode: InputMode::Impedance,
             deconv_mode: DeconvMode::Bayesian,
-            structure_method: StructureMethod::Sobhy,
+            structure_method: StructureMethod::Lanczos,
             precision: 250,
             log_time_size: 250,
             filter_name: FourierFilter::Hann,

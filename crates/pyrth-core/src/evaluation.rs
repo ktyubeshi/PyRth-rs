@@ -1,7 +1,7 @@
 use ndarray::Array1;
 
 use crate::{
-    config::{DeconvMode, EvaluationParams, InputMode},
+    config::{DeconvMode, EvaluationParams, InputMode, StructureMethod},
     data::{ImpedanceData, TransientInput},
     deconvolution::{time_spectrum_bayesian, time_spectrum_fourier, time_spectrum_lasso},
     derivative::z_fit_deriv,
@@ -98,11 +98,21 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
     }?;
     let foster = foster_from_time_spectrum(&derivative.log_time_pad, &time_spectrum, 1e-10)?;
     let cauer = if params.calc_struc {
-        Some(cauer_from_foster_lanczos(
-            &foster.capacitance,
-            &foster.resistance,
-            params,
-        ))
+        match params.structure_method {
+            StructureMethod::Lanczos => Some(cauer_from_foster_lanczos(
+                &foster.capacitance,
+                &foster.resistance,
+                params,
+            )),
+            StructureMethod::Sobhy
+            | StructureMethod::BoorGolub
+            | StructureMethod::Khatwani
+            | StructureMethod::PolyLong => {
+                return Err(PyrthError::UnsupportedStructureMethod(
+                    params.structure_method.to_string(),
+                ));
+            }
+        }
     } else {
         None
     };
