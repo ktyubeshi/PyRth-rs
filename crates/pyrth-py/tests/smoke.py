@@ -65,6 +65,29 @@ def main() -> None:
     )
     assert_impedance_only(module_set)
 
+    labeled = evaluation.standard_module(
+        {
+            "data": DATA,
+            "only_make_z": True,
+            "structure_method": "lanczos",
+            "label": "smoke",
+        }
+    )
+    assert_impedance_only(labeled)
+    labeled_again = evaluation.standard_module(
+        {
+            "data": DATA,
+            "only_make_z": True,
+            "structure_method": "lanczos",
+            "label": "smoke",
+        }
+    )
+    assert_impedance_only(labeled_again)
+    labels = evaluation.module_labels()
+    assert "smoke" in labels
+    assert "smoke_1" in labels
+    assert evaluation.module_count() == len(labels)
+
     csv_dir = REPO_ROOT / "target" / "tmp" / "pyrth-py-smoke-csv"
     shutil.rmtree(csv_dir, ignore_errors=True)
     saved = evaluation.save_as_csv(str(csv_dir))

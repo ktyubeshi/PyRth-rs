@@ -1,6 +1,6 @@
 //! Python extension crate for the PyRth Rust port.
 
-use std::{fs, path::Path, sync::RwLock};
+use std::{collections::HashMap, fs, path::Path, sync::RwLock};
 
 use pyo3::{
     exceptions::PyValueError,
@@ -12,6 +12,8 @@ pub use pyrth_core::*;
 #[pyclass]
 struct Evaluation {
     last_result: RwLock<Option<pyrth_core::EvaluationResult>>,
+    modules: RwLock<HashMap<String, pyrth_core::EvaluationResult>>,
+    module_counters: RwLock<HashMap<String, usize>>,
 }
 
 #[pymethods]
@@ -20,6 +22,8 @@ impl Evaluation {
     fn new() -> Self {
         Self {
             last_result: RwLock::new(None),
+            modules: RwLock::new(HashMap::new()),
+            module_counters: RwLock::new(HashMap::new()),
         }
     }
 
@@ -137,6 +141,7 @@ impl Evaluation {
         py: Python<'_>,
         parameters: &Bound<'_, PyDict>,
     ) -> PyResult<PyObject> {
+        let label = extract_string(parameters, "label")?.unwrap_or_else(|| "no_label".to_string());
         let only_make_z = extract_bool(parameters, "only_make_z")?.unwrap_or(false);
         let calc_struc = extract_bool(parameters, "calc_struc")?.unwrap_or(true);
         let input_mode = extract_string(parameters, "input_mode")?;
@@ -223,7 +228,35 @@ impl Evaluation {
             .write()
             .map_err(|_| PyValueError::new_err("failed to lock Evaluation result state"))? =
             Some(result);
+        let result = self
+            .last_result
+            .read()
+            .map_err(|_| PyValueError::new_err("failed to lock Evaluation result state"))?
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| PyValueError::new_err("failed to store Evaluation result state"))?;
+        self.register_module(label, result)?;
         Ok(output)
+    }
+
+    fn module_labels(&self) -> PyResult<Vec<String>> {
+        let mut labels = self
+            .modules
+            .read()
+            .map_err(|_| PyValueError::new_err("failed to lock Evaluation modules"))?
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        labels.sort();
+        Ok(labels)
+    }
+
+    fn module_count(&self) -> PyResult<usize> {
+        Ok(self
+            .modules
+            .read()
+            .map_err(|_| PyValueError::new_err("failed to lock Evaluation modules"))?
+            .len())
     }
 
     #[pyo3(signature = (output_dir="output/csv"))]
@@ -248,6 +281,35 @@ impl Evaluation {
     #[pyo3(signature = (output_dir="output/csv"))]
     fn save_all(&self, py: Python<'_>, output_dir: &str) -> PyResult<PyObject> {
         self.save_as_csv(py, output_dir)
+    }
+}
+
+impl Evaluation {
+    fn register_module(
+        &self,
+        label: String,
+        result: pyrth_core::EvaluationResult,
+    ) -> PyResult<String> {
+        let final_label = {
+            let mut counters = self
+                .module_counters
+                .write()
+                .map_err(|_| PyValueError::new_err("failed to lock Evaluation module counters"))?;
+            let counter = counters.entry(label.clone()).or_insert(0);
+            let final_label = if *counter == 0 {
+                label
+            } else {
+                format!("{label}_{counter}")
+            };
+            *counter += 1;
+            final_label
+        };
+
+        self.modules
+            .write()
+            .map_err(|_| PyValueError::new_err("failed to lock Evaluation modules"))?
+            .insert(final_label.clone(), result);
+        Ok(final_label)
     }
 }
 
