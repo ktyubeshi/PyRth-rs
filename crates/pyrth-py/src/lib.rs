@@ -139,6 +139,86 @@ impl Evaluation {
         Ok(output.into())
     }
 
+    fn comparison_module(
+        &self,
+        py: Python<'_>,
+        parameters: &Bound<'_, PyDict>,
+    ) -> PyResult<PyObject> {
+        let evaluation_type = extract_string(parameters, "evaluation_type")?
+            .ok_or_else(|| PyValueError::new_err("evaluation_type is required"))?;
+        if !evaluation_type.eq_ignore_ascii_case("standard") {
+            return Err(PyValueError::new_err(
+                "comparison_module currently supports evaluation_type='standard' only",
+            ));
+        }
+        let base_label = extract_string(parameters, "label")?
+            .ok_or_else(|| PyValueError::new_err("label is required"))?;
+        let iterable_keywords = require_string_list(parameters, "iterable_keywords")?;
+        if iterable_keywords.is_empty() {
+            return Err(PyValueError::new_err(
+                "iterable_keywords must contain at least one key",
+            ));
+        }
+
+        let theoretical = theoretical_input_from_parameters(parameters)?;
+        let data = transient_input_to_pairs(&theoretical);
+        let mut iterables = Vec::with_capacity(iterable_keywords.len());
+        for keyword in &iterable_keywords {
+            iterables.push(require_object_list(parameters, keyword)?);
+        }
+        let set_len = iterables[0].len();
+        if iterables.iter().any(|items| items.len() != set_len) {
+            return Err(PyValueError::new_err(
+                "Iterables do not have the same length",
+            ));
+        }
+
+        let reference_parameters = comparison_variant_parameters(
+            py,
+            parameters,
+            &iterable_keywords,
+            &iterables,
+            0,
+            &data,
+            format!("{base_label}_reference"),
+        )?;
+        let reference = evaluation_result_from_result_or_params(py, self, &reference_parameters)?;
+
+        let mut time_const_comparison = Vec::with_capacity(set_len);
+        let mut structure_comparison = Vec::with_capacity(set_len);
+        let mut total_resist_diff = Vec::with_capacity(set_len);
+        for index in 0..set_len {
+            let candidate_parameters = comparison_variant_parameters(
+                py,
+                parameters,
+                &iterable_keywords,
+                &iterables,
+                index,
+                &data,
+                format!("{base_label}_{}", index),
+            )?;
+            let candidate =
+                evaluation_result_from_result_or_params(py, self, &candidate_parameters)?;
+            let comparison = pyrth_core::compare_evaluations(&reference, &candidate)
+                .map_err(|err| PyValueError::new_err(err.to_string()))?;
+            time_const_comparison.push(comparison.time_const_norm);
+            structure_comparison.push(comparison.structure_norm);
+            total_resist_diff.push(comparison.total_resistance_diff);
+        }
+
+        let mod_values = iterables[0]
+            .iter()
+            .map(|value| value.clone_ref(py))
+            .collect::<Vec<_>>();
+        let output = PyDict::new(py);
+        output.set_item("time_const_comparison", time_const_comparison)?;
+        output.set_item("structure_comparison", structure_comparison)?;
+        output.set_item("total_resist_diff", total_resist_diff)?;
+        output.set_item("mod_key_display_name", iterable_keywords.join("_"))?;
+        output.set_item("mod_value_list", PyList::new(py, mod_values)?)?;
+        Ok(output.into())
+    }
+
     fn standard_module(
         &self,
         py: Python<'_>,
@@ -451,6 +531,79 @@ fn comparison_inputs_from_wrapper<'py>(
     )?;
 
     Ok((reference, candidate))
+}
+
+fn comparison_variant_parameters<'py>(
+    py: Python<'py>,
+    parameters: &Bound<'py, PyDict>,
+    iterable_keywords: &[String],
+    iterables: &[Vec<PyObject>],
+    index: usize,
+    data: &[(f64, f64)],
+    label: String,
+) -> PyResult<Bound<'py, PyDict>> {
+    let variant = clone_dict(py, parameters)?;
+    variant.set_item("data", data.to_vec())?;
+    variant.set_item("label", label)?;
+    for (keyword, values) in iterable_keywords.iter().zip(iterables.iter()) {
+        variant.set_item(keyword, values[index].clone_ref(py))?;
+    }
+    Ok(variant)
+}
+
+fn theoretical_input_from_parameters(
+    parameters: &Bound<'_, PyDict>,
+) -> PyResult<pyrth_core::TransientInput> {
+    let resistance = require_first_vec_f64(
+        parameters,
+        &["resistance", "theoretical_resistance", "theo_resistances"],
+    )?;
+    let capacitance = require_first_vec_f64(
+        parameters,
+        &[
+            "capacitance",
+            "theoretical_capacitance",
+            "theo_capacitances",
+        ],
+    )?;
+    let (time_start, time_end) = theoretical_time_range(parameters)?;
+    let time_size = extract_usize(parameters, "time_size")?
+        .or(extract_usize(parameters, "theo_time_size")?)
+        .ok_or_else(|| PyValueError::new_err("time_size or theo_time_size is required"))?;
+
+    pyrth_core::theoretical_impedance_input(
+        &resistance,
+        &capacitance,
+        time_start,
+        time_end,
+        time_size,
+    )
+    .map_err(|err| PyValueError::new_err(err.to_string()))
+}
+
+fn theoretical_time_range(parameters: &Bound<'_, PyDict>) -> PyResult<(f64, f64)> {
+    if let Some(theo_time) = extract_vec_f64(parameters, "theo_time")? {
+        if theo_time.len() != 2 {
+            return Err(PyValueError::new_err(
+                "theo_time must contain exactly two values",
+            ));
+        }
+        return Ok((theo_time[0], theo_time[1]));
+    }
+
+    Ok((
+        require_first_f64(parameters, &["time_start"])?,
+        require_first_f64(parameters, &["time_end"])?,
+    ))
+}
+
+fn transient_input_to_pairs(input: &pyrth_core::TransientInput) -> Vec<(f64, f64)> {
+    input
+        .time
+        .iter()
+        .zip(input.value.iter())
+        .map(|(time, value)| (*time, *value))
+        .collect()
 }
 
 #[pyfunction]

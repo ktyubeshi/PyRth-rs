@@ -83,6 +83,36 @@ def main() -> None:
     assert "sweep_power_step_0" in labels_after_sweep
     assert "sweep_power_step_1" in labels_after_sweep
 
+    comparison_sweep = evaluation.comparison_module(
+        {
+            "resistance": [1.0],
+            "capacitance": [0.5],
+            "time_start": 1e-6,
+            "time_end": 1e-2,
+            "time_size": 32,
+            "label": "comparison_sweep",
+            "evaluation_type": "standard",
+            "iterable_keywords": ["bay_steps"],
+            "bay_steps": [2, 3],
+            "log_time_size": 8,
+            "min_index": 1,
+            "minimum_window_size": 2,
+            "calc_struc": False,
+        }
+    )
+    assert sorted(comparison_sweep) == [
+        "mod_key_display_name",
+        "mod_value_list",
+        "structure_comparison",
+        "time_const_comparison",
+        "total_resist_diff",
+    ]
+    assert comparison_sweep["mod_key_display_name"] == "bay_steps"
+    assert comparison_sweep["mod_value_list"] == [2, 3]
+    assert len(comparison_sweep["time_const_comparison"]) == 2
+    assert comparison_sweep["time_const_comparison"][0] == 0.0
+    assert all(math.isfinite(value) for value in comparison_sweep["time_const_comparison"])
+
     labeled = evaluation.standard_module(
         {
             "data": DATA,
