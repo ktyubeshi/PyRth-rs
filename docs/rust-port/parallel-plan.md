@@ -75,8 +75,8 @@ Goal:
 
 ### D. T3Ster Input
 
-Status: core text parsers and CLI `--input-mode t3ster` are implemented.
-PyO3 file-path ingestion is still pending.
+Status: core text parsers, CLI `--input-mode t3ster`, and PyO3 file-path
+ingestion are implemented.
 
 Owned paths:
 

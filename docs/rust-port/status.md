@@ -72,6 +72,9 @@ implementation remains the reference implementation.
 - Minimal PyO3 entrypoint:
   - `evaluate_impedance(data, only_make_z=False, calc_struc=True)`
   - `Evaluation().standard_module({"data": ...})`
+  - `Evaluation().standard_module({...})` with `input_mode="t3ster"` and
+    `infile`/`infile_pwr`/`infile_tco` or `input`/`t3ster_power`/
+    `t3ster_calibration`
   - `standard_module` accepts `input_mode`, `only_make_z`, `calc_struc`,
     `deconv_mode`, `filter_name`, `filter_range`, `filter_parameter`,
     `log_time_size`, `bay_steps`, `blockwise_sum_width`, `power_step`,
@@ -103,12 +106,12 @@ Lanczos Cauer coverage currently checks:
 - LED derivative golden equality is not enabled.  Its small-window settings
   hit near-ties in the adaptive estimator and currently diverge by window
   selection in a few positions.
-- PyO3 only supports direct two-column inputs. T3Ster file-path ingestion is
-  currently CLI-only.
 - PyO3 returns plain Python dictionaries rather than existing Python
   `StructureFunction` objects.
-- Lasso, adaptive, MPFR structure methods, optimization, bootstrap,
-  comparison, and temperature prediction are not ported.
+- Lasso and adaptive deconvolution now return explicit unsupported errors
+  instead of falling back to Bayesian.
+- Lasso, adaptive, MPFR structure methods, optimization, bootstrap, comparison,
+  and temperature prediction are not ported.
 - The next implementation work is split into non-overlapping `jj` slices in
   `docs/rust-port/parallel-plan.md`.
 
@@ -129,4 +132,5 @@ cargo run -p pyrth-cli -- --input tests\data\MOSFET_tim.txt --output target\tmp\
 cargo run -p pyrth-cli -- --input tests\data\t3ster\T25_I-m5m-I-h600m_100s.raw --input-mode t3ster --t3ster-power tests\data\t3ster\T25_I-m5m-I-h600m_100s.pwr --t3ster-calibration tests\data\t3ster\calib.tco --output target\tmp\cli-t3ster --only-make-z
 uvx maturin develop --manifest-path crates/pyrth-py/Cargo.toml
 .\.venv\Scripts\python.exe crates\pyrth-py\tests\smoke.py
+cargo test -p pyrth-py
 ```
