@@ -140,17 +140,16 @@ pub(crate) fn reduceat_blocks(
     capacitance: &[f64],
     width: usize,
 ) -> (Vec<f64>, Vec<f64>) {
-    let block_count = resistance.len() / width;
+    if width <= 1 || resistance.len() <= width {
+        return (resistance.to_vec(), capacitance.to_vec());
+    }
+
+    let block_count = resistance.len().div_ceil(width);
     let mut block_resistance = Vec::with_capacity(block_count);
     let mut block_capacitance = Vec::with_capacity(block_count);
 
-    for block in 0..block_count {
-        let start = block * width;
-        let end = if block + 1 == block_count {
-            resistance.len()
-        } else {
-            (block + 1) * width
-        };
+    for start in (0..resistance.len()).step_by(width) {
+        let end = (start + width).min(resistance.len());
         block_resistance.push(resistance[start..end].iter().sum());
         block_capacitance.push(capacitance[start..end].iter().sum());
     }

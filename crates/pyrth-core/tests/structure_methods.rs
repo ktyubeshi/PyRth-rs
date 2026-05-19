@@ -47,6 +47,23 @@ fn lanczos_converts_single_foster_branch_without_non_finite_tail() {
 }
 
 #[test]
+fn lanczos_block_reduction_keeps_short_networks() {
+    let resistance = array![2.0];
+    let capacitance = array![3.0];
+    let params = EvaluationParams {
+        blockwise_sum_width: 20,
+        ..EvaluationParams::default()
+    };
+
+    let cauer = cauer_from_foster_lanczos(&capacitance, &resistance, &params);
+
+    assert_eq!(cauer.resistance.len(), 1);
+    assert_eq!(cauer.capacitance.len(), 1);
+    assert_relative_eq!(cauer.resistance[0], 2.0, epsilon = 1e-12);
+    assert_relative_eq!(cauer.capacitance[0], 3.0, epsilon = 1e-12);
+}
+
+#[test]
 fn lanczos_two_branch_cauer_stays_finite_positive_and_monotonic() {
     let resistance = array![2.0, 3.0];
     let capacitance = array![5.0, 7.0];
