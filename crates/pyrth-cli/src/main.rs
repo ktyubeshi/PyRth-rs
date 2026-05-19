@@ -42,6 +42,12 @@ fn run() -> Result<(), Box<dyn Error>> {
         params.power_step = power_step;
     }
     params.is_heating = args.is_heating;
+    if let Some(kfac_fit_deg) = args.kfac_fit_deg {
+        params.kfac_fit_deg = kfac_fit_deg;
+    }
+    if let Some(calibration_path) = args.calibration.as_ref() {
+        params.calibration = Some(read_calibration_data(calibration_path)?);
+    }
 
     let result = evaluate(input, &params)?;
     export_csv(&result, &args.output_dir)?;
@@ -62,6 +68,8 @@ struct CliArgs {
     minimum_window_size: Option<usize>,
     power_step: Option<f64>,
     is_heating: bool,
+    kfac_fit_deg: Option<usize>,
+    calibration: Option<PathBuf>,
 }
 
 impl CliArgs {
@@ -78,6 +86,8 @@ impl CliArgs {
         let mut minimum_window_size = None;
         let mut power_step = None;
         let mut is_heating = false;
+        let mut kfac_fit_deg = None;
+        let mut calibration = None;
 
         let mut args = args.peekable();
         while let Some(arg) = args.next() {
@@ -109,6 +119,10 @@ impl CliArgs {
                 }
                 "--power-step" => power_step = Some(parse_next_f64(&mut args, "--power-step")?),
                 "--is-heating" => is_heating = true,
+                "--kfac-fit-deg" => {
+                    kfac_fit_deg = Some(parse_next_usize(&mut args, "--kfac-fit-deg")?)
+                }
+                "--calibration" => calibration = args.next().map(PathBuf::from),
                 _ if input.is_none() => input = Some(PathBuf::from(arg)),
                 _ if output_dir.is_none() => output_dir = Some(PathBuf::from(arg)),
                 _ => return Err(format!("unknown argument: {arg}").into()),
@@ -128,13 +142,15 @@ impl CliArgs {
             minimum_window_size,
             power_step,
             is_heating,
+            kfac_fit_deg,
+            calibration,
         })
     }
 }
 
 fn print_usage() {
     println!(
-        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt] [--power-step <w>] [--is-heating] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
+        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt] [--power-step <w>] [--is-heating] [--calibration <path>] [--kfac-fit-deg <n>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
     );
 }
 
@@ -198,4 +214,14 @@ fn read_two_column_data(path: &Path) -> Result<TransientInput, Box<dyn Error>> {
     }
 
     TransientInput::from_pairs(pairs).map_err(Into::into)
+}
+
+fn read_calibration_data(path: &Path) -> Result<Vec<[f64; 2]>, Box<dyn Error>> {
+    let input = read_two_column_data(path)?;
+    Ok(input
+        .time
+        .iter()
+        .zip(input.value.iter())
+        .map(|(temperature, voltage)| [*temperature, *voltage])
+        .collect())
 }

@@ -34,6 +34,8 @@ impl Evaluation {
         let blockwise_sum_width = extract_usize(parameters, "blockwise_sum_width")?;
         let power_step = extract_f64(parameters, "power_step")?;
         let is_heating = extract_bool(parameters, "is_heating")?.unwrap_or(false);
+        let kfac_fit_deg = extract_usize(parameters, "kfac_fit_deg")?;
+        let calibration = extract_calibration(parameters)?;
 
         evaluate_impedance_with_params(
             py,
@@ -47,6 +49,8 @@ impl Evaluation {
                 blockwise_sum_width,
                 power_step,
                 is_heating,
+                kfac_fit_deg,
+                calibration,
             },
         )
     }
@@ -72,6 +76,8 @@ fn evaluate_impedance(
             blockwise_sum_width: None,
             power_step: None,
             is_heating: false,
+            kfac_fit_deg: None,
+            calibration: None,
         },
     )
 }
@@ -85,6 +91,8 @@ struct EvalOverrides {
     blockwise_sum_width: Option<usize>,
     power_step: Option<f64>,
     is_heating: bool,
+    kfac_fit_deg: Option<usize>,
+    calibration: Option<Vec<[f64; 2]>>,
 }
 
 fn evaluate_impedance_with_params(
@@ -115,6 +123,12 @@ fn evaluate_impedance_with_params(
         params.power_step = power_step;
     }
     params.is_heating = overrides.is_heating;
+    if let Some(kfac_fit_deg) = overrides.kfac_fit_deg {
+        params.kfac_fit_deg = kfac_fit_deg;
+    }
+    if let Some(calibration) = overrides.calibration {
+        params.calibration = Some(calibration);
+    }
 
     let result = pyrth_core::evaluate(input, &params)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
@@ -206,4 +220,22 @@ fn extract_string(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<
         .map(|value| value.extract::<String>())
         .transpose()
         .map_err(|err| PyValueError::new_err(format!("{key} must be a string: {err}")))
+}
+
+fn extract_calibration(parameters: &Bound<'_, PyDict>) -> PyResult<Option<Vec<[f64; 2]>>> {
+    parameters
+        .get_item("calibration")?
+        .map(|value| {
+            let pairs = value.extract::<Vec<(f64, f64)>>()?;
+            Ok(pairs
+                .into_iter()
+                .map(|(temperature, voltage)| [temperature, voltage])
+                .collect())
+        })
+        .transpose()
+        .map_err(|err: PyErr| {
+            PyValueError::new_err(format!(
+                "calibration must be a sequence of (temperature, voltage) pairs: {err}"
+            ))
+        })
 }

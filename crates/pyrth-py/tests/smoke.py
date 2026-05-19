@@ -15,6 +15,8 @@ import pyrth_py
 
 DATA = [(1e-6, 0.1), (1e-5, 0.2), (1e-4, 0.3)]
 TEMP_DATA = [(1.0, 20.0), (2.0, 19.0), (3.0, 18.0)]
+VOLT_DATA = [(1.0, 0.5), (2.0, 0.4), (3.0, 0.3)]
+CALIBRATION = [(20.0, 0.5), (30.0, 0.4), (40.0, 0.3)]
 
 
 def assert_impedance_only(result: dict) -> None:
@@ -22,6 +24,12 @@ def assert_impedance_only(result: dict) -> None:
     assert result["time"] == [point[0] for point in DATA]
     assert result["impedance"] == [point[1] for point in DATA]
     assert all(math.isfinite(value) for value in result["log_time"])
+
+
+def assert_close_list(actual: list[float], expected: list[float], tol: float = 1e-9) -> None:
+    assert len(actual) == len(expected)
+    for left, right in zip(actual, expected):
+        assert abs(left - right) <= tol
 
 
 def main() -> None:
@@ -41,6 +49,17 @@ def main() -> None:
         }
     )
     assert temp_module["impedance"] == [0.0, 0.5, 1.0]
+
+    volt_module = evaluation.standard_module(
+        {
+            "data": VOLT_DATA,
+            "input_mode": "volt",
+            "only_make_z": True,
+            "calibration": CALIBRATION,
+            "kfac_fit_deg": 1,
+        }
+    )
+    assert_close_list(volt_module["impedance"], [0.0, -10.0, -20.0])
 
     try:
         evaluation.standard_module(
