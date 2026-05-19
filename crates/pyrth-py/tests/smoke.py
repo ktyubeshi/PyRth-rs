@@ -290,6 +290,38 @@ def main() -> None:
     assert len(bootstrap_from_data["impedance_median"]) == len(theoretical["time"])
     assert len(bootstrap_from_data["time_spectrum_median"]) == 8
 
+    bootstrap_comparison = evaluation.comparison_module(
+        {
+            "data": list(zip(theoretical["time"], theoretical["impedance"])),
+            "evaluation_type": "bootstrap",
+            "label": "bootstrap_comparison",
+            "iterable_keywords": ["noise_std"],
+            "noise_std": [0.0, 1e-12],
+            "repetitions": 2,
+            "random_seed": 7,
+            "deconv_mode": "fourier",
+            "log_time_size": 8,
+            "min_index": 1,
+            "minimum_window_size": 2,
+            "calc_struc": False,
+        }
+    )
+    assert sorted(bootstrap_comparison) == [
+        "mod_key_display_name",
+        "mod_value_list",
+        "structure_comparison",
+        "time_const_comparison",
+        "total_resist_diff",
+    ]
+    assert bootstrap_comparison["mod_key_display_name"] == "noise_std"
+    assert bootstrap_comparison["mod_value_list"] == [0.0, 1e-12]
+    assert bootstrap_comparison["time_const_comparison"][0] == 0.0
+    assert bootstrap_comparison["structure_comparison"] == [0.0, 0.0]
+    assert all(
+        math.isfinite(value) for value in bootstrap_comparison["time_const_comparison"]
+    )
+    assert all(math.isfinite(value) for value in bootstrap_comparison["total_resist_diff"])
+
     target = pyrth_py.theoretical_impedance([1.0, 3.0], [0.4, 2.0], 1e-3, 1e2, 32)
     optimized = pyrth_py.optimize_rc(
         list(zip(target["time"], target["impedance"])),

@@ -275,12 +275,15 @@ impl Evaluation {
     ) -> PyResult<PyObject> {
         let evaluation_type = extract_string(parameters, "evaluation_type")?
             .ok_or_else(|| PyValueError::new_err("evaluation_type is required"))?;
+        if evaluation_type.eq_ignore_ascii_case("bootstrap") {
+            return self.comparison_module_bootstrap(py, parameters);
+        }
         if evaluation_type.eq_ignore_ascii_case("optimization") {
             return self.comparison_module_optimization(py, parameters);
         }
         if !evaluation_type.eq_ignore_ascii_case("standard") {
             return Err(PyValueError::new_err(
-                "comparison_module currently supports evaluation_type='standard' or 'optimization' only",
+                "comparison_module currently supports evaluation_type='standard', 'bootstrap', or 'optimization' only",
             ));
         }
         let base_label = extract_string(parameters, "label")?
@@ -627,6 +630,84 @@ impl Evaluation {
         Ok(output.into())
     }
 
+    fn comparison_module_bootstrap(
+        &self,
+        py: Python<'_>,
+        parameters: &Bound<'_, PyDict>,
+    ) -> PyResult<PyObject> {
+        let base_label = extract_string(parameters, "label")?
+            .ok_or_else(|| PyValueError::new_err("label is required"))?;
+        let iterable_keywords = require_string_list(parameters, "iterable_keywords")?;
+        if iterable_keywords.is_empty() {
+            return Err(PyValueError::new_err(
+                "iterable_keywords must contain at least one key",
+            ));
+        }
+
+        let base_input = if let Some(data) = extract_pairs(parameters, "data")? {
+            Some(
+                pyrth_core::TransientInput::from_pairs(data)
+                    .map_err(|err| PyValueError::new_err(err.to_string()))?,
+            )
+        } else {
+            None
+        };
+        let base_data = base_input.as_ref().map(transient_input_to_pairs);
+
+        let mut iterables = Vec::with_capacity(iterable_keywords.len());
+        for keyword in &iterable_keywords {
+            iterables.push(require_object_list(parameters, keyword)?);
+        }
+        let set_len = iterables[0].len();
+        if iterables.iter().any(|items| items.len() != set_len) {
+            return Err(PyValueError::new_err(
+                "Iterables do not have the same length",
+            ));
+        }
+
+        let reference_parameters = comparison_bootstrap_variant_parameters(
+            py,
+            parameters,
+            &iterable_keywords,
+            &iterables,
+            0,
+            base_data.as_deref(),
+            format!("{base_label}_reference"),
+        )?;
+        let reference = bootstrap_result_from_parameters(&reference_parameters)?;
+
+        let mut time_const_comparison = Vec::with_capacity(set_len);
+        let mut structure_comparison = Vec::with_capacity(set_len);
+        let mut total_resist_diff = Vec::with_capacity(set_len);
+        for index in 0..set_len {
+            let candidate_parameters = comparison_bootstrap_variant_parameters(
+                py,
+                parameters,
+                &iterable_keywords,
+                &iterables,
+                index,
+                base_data.as_deref(),
+                format!("{base_label}_{}", index),
+            )?;
+            let candidate = bootstrap_result_from_parameters(&candidate_parameters)?;
+            time_const_comparison.push(bootstrap_time_spectrum_norm(&reference, &candidate)?);
+            structure_comparison.push(0.0);
+            total_resist_diff.push(bootstrap_total_resistance_diff(&reference, &candidate)?);
+        }
+
+        let mod_values = iterables[0]
+            .iter()
+            .map(|value| value.clone_ref(py))
+            .collect::<Vec<_>>();
+        let output = PyDict::new(py);
+        output.set_item("time_const_comparison", time_const_comparison)?;
+        output.set_item("structure_comparison", structure_comparison)?;
+        output.set_item("total_resist_diff", total_resist_diff)?;
+        output.set_item("mod_key_display_name", iterable_keywords.join("_"))?;
+        output.set_item("mod_value_list", PyList::new(py, mod_values)?)?;
+        Ok(output.into())
+    }
+
     #[pyo3(signature = (output_dir="output/csv"))]
     fn save_as_csv(&self, py: Python<'_>, output_dir: &str) -> PyResult<PyObject> {
         let modules = self
@@ -804,6 +885,26 @@ fn comparison_variant_parameters<'py>(
     Ok(variant)
 }
 
+fn comparison_bootstrap_variant_parameters<'py>(
+    py: Python<'py>,
+    parameters: &Bound<'py, PyDict>,
+    iterable_keywords: &[String],
+    iterables: &[Vec<PyObject>],
+    index: usize,
+    data: Option<&[(f64, f64)]>,
+    label: String,
+) -> PyResult<Bound<'py, PyDict>> {
+    let variant = clone_dict(py, parameters)?;
+    variant.set_item("label", label)?;
+    if let Some(data) = data {
+        variant.set_item("data", data.to_vec())?;
+    }
+    for (keyword, values) in iterable_keywords.iter().zip(iterables.iter()) {
+        variant.set_item(keyword, values[index].clone_ref(py))?;
+    }
+    Ok(variant)
+}
+
 fn theoretical_input_from_parameters(
     parameters: &Bound<'_, PyDict>,
 ) -> PyResult<pyrth_core::TransientInput> {
@@ -938,6 +1039,94 @@ fn bootstrap_evaluation_params_from_parameters(
         params.filter_parameter = filter_parameter;
     }
     Ok(params)
+}
+
+fn bootstrap_result_from_parameters(
+    parameters: &Bound<'_, PyDict>,
+) -> PyResult<pyrth_core::BootstrapResult> {
+    let repetitions = require_first_usize(parameters, &["repetitions"])?;
+    let seed = extract_u64(parameters, "seed")?
+        .or(extract_u64(parameters, "random_seed")?)
+        .unwrap_or(0);
+    let params = bootstrap_evaluation_params_from_parameters(parameters)?;
+
+    if let Some(data) = extract_pairs(parameters, "data")? {
+        let input = pyrth_core::TransientInput::from_pairs(data)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        let noise_std = bootstrap_noise_std_from_data(parameters, &input)?;
+        return pyrth_core::bootstrap_from_impedance_data(
+            &input,
+            repetitions,
+            noise_std,
+            &params,
+            seed,
+        )
+        .map_err(|err| PyValueError::new_err(err.to_string()));
+    }
+
+    let resistance = require_first_vec_f64(
+        parameters,
+        &["resistance", "theoretical_resistance", "theo_resistances"],
+    )?;
+    let capacitance = require_first_vec_f64(
+        parameters,
+        &[
+            "capacitance",
+            "theoretical_capacitance",
+            "theo_capacitances",
+        ],
+    )?;
+    let (time_start, time_end) = theoretical_time_range(parameters)?;
+    let time_size = extract_usize(parameters, "time_size")?
+        .or(extract_usize(parameters, "theo_time_size")?)
+        .ok_or_else(|| PyValueError::new_err("time_size or theo_time_size is required"))?;
+    let noise_std = bootstrap_noise_std(
+        parameters,
+        &resistance,
+        &capacitance,
+        time_start,
+        time_end,
+        time_size,
+    )?;
+    let model = pyrth_core::TheoreticalModel::from_slices(&resistance, &capacitance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    pyrth_core::bootstrap_from_theoretical(
+        &model,
+        time_start,
+        time_end,
+        time_size,
+        repetitions,
+        noise_std,
+        &params,
+        seed,
+    )
+    .map_err(|err| PyValueError::new_err(err.to_string()))
+}
+
+fn bootstrap_time_spectrum_norm(
+    reference: &pyrth_core::BootstrapResult,
+    candidate: &pyrth_core::BootstrapResult,
+) -> PyResult<f64> {
+    pyrth_core::relative_l2_norm(&reference.time_spectrum_mean, &candidate.time_spectrum_mean)
+        .map_err(|err| PyValueError::new_err(err.to_string()))
+}
+
+fn bootstrap_total_resistance_diff(
+    reference: &pyrth_core::BootstrapResult,
+    candidate: &pyrth_core::BootstrapResult,
+) -> PyResult<f64> {
+    let reference_total = reference
+        .impedance_mean
+        .last()
+        .copied()
+        .ok_or_else(|| PyValueError::new_err("reference bootstrap impedance_mean is empty"))?;
+    let candidate_total = candidate
+        .impedance_mean
+        .last()
+        .copied()
+        .ok_or_else(|| PyValueError::new_err("candidate bootstrap impedance_mean is empty"))?;
+    Ok((reference_total - candidate_total).abs())
 }
 
 fn transient_input_to_pairs(input: &pyrth_core::TransientInput) -> Vec<(f64, f64)> {
