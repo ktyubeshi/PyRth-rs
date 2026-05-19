@@ -211,6 +211,12 @@ def main() -> None:
     assert "time_spec" in lasso_object
     assert lasso_object["time_spec"] == lasso_module["time_spec"]
     assert "time_spec" in lasso_object.keys()
+    assert lasso_object.imp_deriv_interp == lasso_module["imp_deriv_interp"]
+    assert lasso_object.log_time_interp == lasso_module["log_time_interp"]
+    assert lasso_object.therm_resist_fost == lasso_module["therm_resist_fost"]
+    assert lasso_object.therm_capa_fost == lasso_module["therm_capa_fost"]
+    assert lasso_object.cau_res is None
+    assert "therm_resist_fost" in lasso_object.keys()
 
     theoretical = pyrth_py.theoretical_impedance([1.0, 2.0], [0.5, 1.5], 1e-6, 1e-2, 8)
     assert sorted(theoretical) == ["impedance", "time"]

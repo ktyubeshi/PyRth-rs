@@ -52,6 +52,78 @@ impl PyStructureFunction {
     }
 
     #[getter]
+    fn log_time_interp(&self) -> Option<Vec<f64>> {
+        self.result
+            .derivative
+            .as_ref()
+            .map(|derivative| derivative.log_time_interp.to_vec())
+    }
+
+    #[getter]
+    fn imp_deriv_interp(&self) -> Option<Vec<f64>> {
+        self.result
+            .derivative
+            .as_ref()
+            .map(|derivative| derivative.imp_deriv_interp.to_vec())
+    }
+
+    #[getter]
+    fn therm_resist_fost(&self) -> Option<Vec<f64>> {
+        self.result
+            .foster
+            .as_ref()
+            .map(|foster| foster.resistance.to_vec())
+    }
+
+    #[getter]
+    fn therm_capa_fost(&self) -> Option<Vec<f64>> {
+        self.result
+            .foster
+            .as_ref()
+            .map(|foster| foster.capacitance.to_vec())
+    }
+
+    #[getter]
+    fn cau_res(&self) -> Option<Vec<f64>> {
+        self.result
+            .cauer
+            .as_ref()
+            .map(|cauer| cauer.resistance.to_vec())
+    }
+
+    #[getter]
+    fn cau_cap(&self) -> Option<Vec<f64>> {
+        self.result
+            .cauer
+            .as_ref()
+            .map(|cauer| cauer.capacitance.to_vec())
+    }
+
+    #[getter]
+    fn int_cau_res(&self) -> Option<Vec<f64>> {
+        self.result
+            .cauer
+            .as_ref()
+            .map(|cauer| cauer.cumulative_resistance.to_vec())
+    }
+
+    #[getter]
+    fn int_cau_cap(&self) -> Option<Vec<f64>> {
+        self.result
+            .cauer
+            .as_ref()
+            .map(|cauer| cauer.cumulative_capacitance.to_vec())
+    }
+
+    #[getter]
+    fn diff_struc(&self) -> Option<Vec<f64>> {
+        self.result
+            .cauer
+            .as_ref()
+            .map(|cauer| cauer.differential_structure.to_vec())
+    }
+
+    #[getter]
     fn foster(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
         self.result
             .foster
@@ -1878,6 +1950,8 @@ fn evaluation_result_to_dict(
         derivative_dict.set_item("log_time_pad", derivative.log_time_pad.to_vec())?;
         derivative_dict.set_item("log_time_delta", derivative.log_time_delta)?;
         output.set_item("derivative", derivative_dict)?;
+        output.set_item("imp_deriv_interp", derivative.imp_deriv_interp.to_vec())?;
+        output.set_item("log_time_interp", derivative.log_time_interp.to_vec())?;
     }
 
     if let Some(time_spectrum) = result.time_spectrum {
@@ -1890,6 +1964,8 @@ fn evaluation_result_to_dict(
         foster_dict.set_item("capacitance", foster.capacitance.to_vec())?;
         foster_dict.set_item("tau", foster.tau.to_vec())?;
         output.set_item("foster", foster_dict)?;
+        output.set_item("therm_resist_fost", foster.resistance.to_vec())?;
+        output.set_item("therm_capa_fost", foster.capacitance.to_vec())?;
     }
 
     if let Some(cauer) = result.cauer {
@@ -1909,6 +1985,11 @@ fn evaluation_result_to_dict(
             cauer.differential_structure.to_vec(),
         )?;
         output.set_item("cauer", cauer_dict)?;
+        output.set_item("cau_res", cauer.resistance.to_vec())?;
+        output.set_item("cau_cap", cauer.capacitance.to_vec())?;
+        output.set_item("int_cau_res", cauer.cumulative_resistance.to_vec())?;
+        output.set_item("int_cau_cap", cauer.cumulative_capacitance.to_vec())?;
+        output.set_item("diff_struc", cauer.differential_structure.to_vec())?;
     }
 
     Ok(output.into())
@@ -1950,15 +2031,24 @@ fn evaluation_result_keys(result: &pyrth_core::EvaluationResult) -> Vec<String> 
     ];
     if result.derivative.is_some() {
         keys.push("derivative".to_string());
+        keys.push("imp_deriv_interp".to_string());
+        keys.push("log_time_interp".to_string());
     }
     if result.time_spectrum.is_some() {
         keys.push("time_spec".to_string());
     }
     if result.foster.is_some() {
         keys.push("foster".to_string());
+        keys.push("therm_resist_fost".to_string());
+        keys.push("therm_capa_fost".to_string());
     }
     if result.cauer.is_some() {
         keys.push("cauer".to_string());
+        keys.push("cau_res".to_string());
+        keys.push("cau_cap".to_string());
+        keys.push("int_cau_res".to_string());
+        keys.push("int_cau_cap".to_string());
+        keys.push("diff_struc".to_string());
     }
     keys
 }
