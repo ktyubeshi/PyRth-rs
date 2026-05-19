@@ -12,8 +12,11 @@ implementation remains the reference implementation.
 - Python golden fixture generation:
   - `tests/golden/generate_golden.py`
   - Bayesian + Lanczos reference fixtures for MOSFET TIM, MOSFET dry, and LED
-- Rust core pipeline for `input_mode="impedance"`:
-  - impedance ingest
+- Rust core pipeline for direct two-column inputs:
+  - `input_mode="impedance"` ingest
+  - `input_mode="temp"` to impedance conversion without extrapolation
+  - `input_mode="volt"` to impedance conversion with polynomial calibration,
+    without extrapolation
   - log-time derivative preprocessing
   - Bayesian deconvolution
   - Foster network conversion
@@ -38,11 +41,17 @@ implementation remains the reference implementation.
   - `--blockwise-sum-width`
   - `--min-index`
   - `--minimum-window-size`
+  - `--input-mode`
+  - `--power-step`
+  - `--is-heating`
+  - `--calibration`
+  - `--kfac-fit-deg`
 - Minimal PyO3 entrypoint:
   - `evaluate_impedance(data, only_make_z=False, calc_struc=True)`
   - `Evaluation().standard_module({"data": ...})`
-  - `standard_module` accepts `only_make_z`, `calc_struc`, `log_time_size`,
-    `bay_steps`, and `blockwise_sum_width`
+  - `standard_module` accepts `input_mode`, `only_make_z`, `calc_struc`,
+    `log_time_size`, `bay_steps`, `blockwise_sum_width`, `power_step`,
+    `is_heating`, `calibration`, and `kfac_fit_deg`
 
 ## Golden Coverage
 
@@ -68,11 +77,10 @@ Lanczos Cauer coverage currently checks:
 - LED derivative golden equality is not enabled.  Its small-window settings
   hit near-ties in the adaptive estimator and currently diverge by window
   selection in a few positions.
-- PyO3 does not yet expose the existing Python `Evaluation().standard_module`
-  compatibility facade.
-- CLI only supports direct two-column impedance input.
-- PyO3 only accepts direct two-column impedance input and returns plain Python
-  dictionaries rather than existing Python `StructureFunction` objects.
+- CLI/PyO3 only support direct two-column inputs. T3Ster files and
+  extrapolated temp/volt preprocessing are not ported.
+- PyO3 returns plain Python dictionaries rather than existing Python
+  `StructureFunction` objects.
 - Fourier, Lasso, adaptive, MPFR structure methods, optimization, bootstrap,
   comparison, and temperature prediction are not ported.
 
@@ -84,6 +92,8 @@ uv run --python 3.12 --with-editable . --with pytest pytest tests/cases/test_sta
 cargo test
 cargo run -p pyrth-cli -- --input target\tmp\cli-input.csv --output target\tmp\cli-smoke --only-make-z
 cargo run -p pyrth-cli -- --input target\tmp\cli-input.csv --output target\tmp\cli-full-small --log-time-size 10 --bay-steps 2 --min-index 1 --minimum-window-size 2 --no-structure
+cargo run -p pyrth-cli -- --input target\tmp\temp-input.csv --output target\tmp\cli-temp --input-mode temp --power-step 2 --only-make-z
+cargo run -p pyrth-cli -- --input target\tmp\volt-input.csv --output target\tmp\cli-volt --input-mode volt --calibration target\tmp\calib.csv --kfac-fit-deg 1 --only-make-z
 uvx maturin develop --manifest-path crates/pyrth-py/Cargo.toml
 .\.venv\Scripts\python.exe crates\pyrth-py\tests\smoke.py
 ```
