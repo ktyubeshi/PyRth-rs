@@ -113,8 +113,8 @@ Goal:
 ### F. Theoretical And Prediction
 
 Status: theoretical RC impedance generation, standard temperature prediction,
-and reusable RC/optimization-result temperature prediction helpers are
-implemented in core.
+reusable RC/optimization-result temperature prediction helpers, and the matching
+PyO3 facades are implemented.
 
 Owned paths:
 
@@ -126,8 +126,9 @@ Owned paths:
 Goal:
 
 - Build the foundation for comparison, bootstrap-from-theoretical, and
-  temperature prediction workflows.  The remaining work is PyO3/Python-style
-  orchestration that runs an optimization module internally before prediction.
+  temperature prediction workflows.  The remaining work is Python-style
+  orchestration that runs a full optimization module internally before
+  prediction.
 
 ### G. Comparison Metrics
 
@@ -164,9 +165,8 @@ Goal:
 
 ### I. MPFR Structure Methods
 
-Status: first feature-gated step implemented.  `rug` is an optional dependency
-behind the non-default `mpfr` feature, and `StructureMethod::PolyLong` is wired
-to a `rug::Float` poly-long conversion only when that feature is enabled.
+Status: feature-gated `polylong`, `sobhy`, and `khatwani` paths are
+implemented behind the non-default `mpfr` feature.  `rug` is optional, and
 Windows MSVC cannot currently build `gmp-mpfr-sys`, so MPFR verification needs
 a supported GNU/Linux or Windows GNU toolchain.
 
@@ -183,9 +183,8 @@ Goal:
 - Port Python `transient_mpfr_utils.py` methods (`polylong`, `sobhy`,
   `khatwani`, `boor_golub`) without mislabeling Lanczos or f64 scaffolding as
   MPFR-equivalent output.
-- Continue from the feature-gated `polylong` path by porting the remaining
-  MPFR methods and adding parity coverage on a toolchain supported by
-  `gmp-mpfr-sys`.
+- Continue by porting `boor_golub` and adding stronger parity coverage on a
+  toolchain supported by `gmp-mpfr-sys`.
 
 ## Landing Rules
 

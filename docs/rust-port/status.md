@@ -95,8 +95,8 @@ implementation remains the reference implementation.
   - `optimize_rc(data, initial_resistance, initial_capacitance,
     lower_resistance, lower_capacitance, upper_resistance,
     upper_capacitance, ...)`
-  - `predict_temperature_response(impulse_response, power_data,
-    lin_sampling_period=1.0)`
+  - `predict_temperature_response(...)` for explicit impulse responses,
+    Foster RC arrays, or optimization result dicts plus power data
   - `Evaluation().standard_module({"data": ...})`
   - `Evaluation().standard(...)` and `Evaluation().standard_module_set(...)`
     as thin aliases over `standard_module`
@@ -105,7 +105,8 @@ implementation remains the reference implementation.
   - `Evaluation().theoretical({...})`, `Evaluation().bootstrap({...})`,
     `Evaluation().optimization({...})`, and
     `Evaluation().temperature_prediction({...})` as dict-parameter facades
-    over the module-level PyO3 helpers
+    over the module-level PyO3 helpers; temperature prediction accepts explicit
+    impulse responses, Foster RC arrays, or optimization result dicts
   - `Evaluation().comparison(reference, candidate)` for two PyO3 result dicts
     or two standard-evaluation parameter dicts; it also accepts
     `Evaluation().comparison({"reference": ..., "candidate": ...})` as a thin
@@ -177,16 +178,17 @@ Lanczos Cauer coverage currently checks:
 - MPFR structure methods and full Python optimization parity are only partly
   ported.  With the non-default `mpfr` Cargo feature, `polylong` now routes
   through a `rug::Float` Foster rational/poly-long conversion using
-  `EvaluationParams.precision`; without that feature it remains unsupported.
-  `sobhy`, `khatwani`, and `boor_golub` are still unsupported.
+  `EvaluationParams.precision`; `sobhy` and `khatwani` are also wired through
+  feature-gated MPFR J-fraction helpers.  Without that feature they remain
+  unsupported.  `boor_golub` is still unsupported.
 - Bootstrap and comparison currently cover core numerical helpers and thin
   `Evaluation` dict facades only.  They do not port Python's wider
   `bootstrap_*`/`comparison_module` orchestration, iterable module-set handling,
   result module registration, or exporter parity.
-- Temperature prediction core helpers now support explicit impulse responses,
-  Foster RC parameters, and `OptimizationResult` parameters, but the PyO3
-  `temperature_prediction` facade still does not run a full optimization module
-  internally like Python's orchestration layer.
+- Temperature prediction core and PyO3 helpers now support explicit impulse
+  responses, Foster RC parameters, and optimization-result dictionaries, but
+  the PyO3 `temperature_prediction` facade still does not run a full
+  optimization module internally like Python's orchestration layer.
 - The next implementation work is split into non-overlapping `jj` slices in
   `docs/rust-port/parallel-plan.md`.
 
