@@ -167,6 +167,20 @@ def main() -> None:
     assert Path(saved["sweep_power_step_0"]["impedance"]).exists()
     assert Path(saved["sweep_power_step_1"]["impedance"]).exists()
 
+    figure_dir = REPO_ROOT / "target" / "tmp" / "pyrth-py-smoke-figures"
+    shutil.rmtree(figure_dir, ignore_errors=True)
+    figures = evaluation.save_figures(str(figure_dir))
+    assert sorted(figures["no_label"]) == ["impedance"]
+    impedance_svg = Path(figures["no_label"]["impedance"])
+    assert impedance_svg.exists()
+    assert impedance_svg.read_text().startswith("<svg ")
+
+    all_dir = REPO_ROOT / "target" / "tmp" / "pyrth-py-smoke-all"
+    shutil.rmtree(all_dir, ignore_errors=True)
+    saved_all = evaluation.save_all(str(all_dir))
+    assert Path(saved_all["csv"]["no_label"]["impedance"]).exists()
+    assert Path(saved_all["figures"]["no_label"]["impedance"]).exists()
+
     lasso_module = evaluation.standard_module(
         {
             "data": LASSO_DATA,

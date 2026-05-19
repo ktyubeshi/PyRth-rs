@@ -710,6 +710,38 @@ impl Evaluation {
 
     #[pyo3(signature = (output_dir="output/csv"))]
     fn save_as_csv(&self, py: Python<'_>, output_dir: &str) -> PyResult<PyObject> {
+        self.export_registered_modules(py, output_dir, ExportKind::Csv)
+    }
+
+    #[pyo3(signature = (output_dir="output/figures"))]
+    fn save_figures(&self, py: Python<'_>, output_dir: &str) -> PyResult<PyObject> {
+        self.export_registered_modules(py, output_dir, ExportKind::Figure)
+    }
+
+    #[pyo3(signature = (output_dir="output"))]
+    fn save_all(&self, py: Python<'_>, output_dir: &str) -> PyResult<PyObject> {
+        let output = PyDict::new(py);
+        output.set_item("csv", self.save_as_csv(py, &format!("{output_dir}/csv"))?)?;
+        output.set_item(
+            "figures",
+            self.save_figures(py, &format!("{output_dir}/figures"))?,
+        )?;
+        Ok(output.into())
+    }
+}
+
+enum ExportKind {
+    Csv,
+    Figure,
+}
+
+impl Evaluation {
+    fn export_registered_modules(
+        &self,
+        py: Python<'_>,
+        output_dir: &str,
+        export_kind: ExportKind,
+    ) -> PyResult<PyObject> {
         let modules = self
             .modules
             .read()
@@ -728,21 +760,25 @@ impl Evaluation {
             let result = modules
                 .get(&label)
                 .ok_or_else(|| PyValueError::new_err("failed to read Evaluation module"))?;
-            let files = pyrth_core::export_csv(result, Path::new(output_dir).join(&label))
-                .map_err(|err| PyValueError::new_err(err.to_string()))?;
-            output.set_item(label, exported_csv_files_to_dict(py, files)?)?;
+            let module_output_dir = Path::new(output_dir).join(&label);
+            let files = match export_kind {
+                ExportKind::Csv => {
+                    let files = pyrth_core::export_csv(result, module_output_dir)
+                        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+                    exported_csv_files_to_dict(py, files)?
+                }
+                ExportKind::Figure => {
+                    let files = pyrth_core::export_svg_figures(result, module_output_dir)
+                        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+                    exported_figure_files_to_dict(py, files)?
+                }
+            };
+            output.set_item(label, files)?;
         }
 
         Ok(output.into())
     }
 
-    #[pyo3(signature = (output_dir="output/csv"))]
-    fn save_all(&self, py: Python<'_>, output_dir: &str) -> PyResult<PyObject> {
-        self.save_as_csv(py, output_dir)
-    }
-}
-
-impl Evaluation {
     fn register_module(
         &self,
         label: String,
@@ -1960,6 +1996,30 @@ fn cauer_network_to_dict(py: Python<'_>, cauer: &pyrth_core::CauerNetwork) -> Py
 fn exported_csv_files_to_dict(
     py: Python<'_>,
     files: pyrth_core::ExportedCsvFiles,
+) -> PyResult<PyObject> {
+    let output = PyDict::new(py);
+    output.set_item("impedance", path_to_string(&files.impedance))?;
+    if let Some(path) = files.imp_deriv {
+        output.set_item("imp_deriv", path_to_string(&path))?;
+    }
+    if let Some(path) = files.time_spec {
+        output.set_item("time_spec", path_to_string(&path))?;
+    }
+    if let Some(path) = files.foster {
+        output.set_item("foster", path_to_string(&path))?;
+    }
+    if let Some(path) = files.cauer {
+        output.set_item("cauer", path_to_string(&path))?;
+    }
+    if let Some(path) = files.diff_struc {
+        output.set_item("diff_struc", path_to_string(&path))?;
+    }
+    Ok(output.into())
+}
+
+fn exported_figure_files_to_dict(
+    py: Python<'_>,
+    files: pyrth_core::ExportedFigureFiles,
 ) -> PyResult<PyObject> {
     let output = PyDict::new(py);
     output.set_item("impedance", path_to_string(&files.impedance))?;
