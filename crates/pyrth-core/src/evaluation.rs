@@ -1,9 +1,9 @@
 use ndarray::Array1;
 
 use crate::{
-    config::{EvaluationParams, InputMode},
+    config::{DeconvMode, EvaluationParams, InputMode},
     data::{ImpedanceData, TransientInput},
-    deconvolution::time_spectrum_bayesian,
+    deconvolution::{time_spectrum_bayesian, time_spectrum_fourier},
     derivative::z_fit_deriv,
     error::{PyrthError, Result},
     network::{cauer_from_foster_lanczos, foster_from_time_spectrum},
@@ -88,7 +88,11 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
     }
 
     let derivative = z_fit_deriv(&impedance.impedance, &impedance.log_time, params)?;
-    let time_spectrum = time_spectrum_bayesian(&derivative, params);
+    let time_spectrum = match params.deconv_mode {
+        DeconvMode::Bayesian => time_spectrum_bayesian(&derivative, params),
+        DeconvMode::Fourier => time_spectrum_fourier(&derivative),
+        DeconvMode::Lasso | DeconvMode::Adaptive => time_spectrum_bayesian(&derivative, params),
+    };
     let foster = foster_from_time_spectrum(&derivative.log_time_pad, &time_spectrum, 1e-10)?;
     let cauer = if params.calc_struc {
         Some(cauer_from_foster_lanczos(

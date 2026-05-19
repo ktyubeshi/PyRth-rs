@@ -184,6 +184,30 @@ fn evaluation_flags_gate_pipeline_stages() {
 }
 
 #[test]
+fn fourier_deconvolution_returns_time_spectrum() {
+    let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
+    let mut params = params_from_fixture(&fixture);
+    params.deconv_mode = DeconvMode::Fourier;
+    params.calc_struc = false;
+
+    let (_, result) = evaluate_fixture_with_params(fixture, params);
+    let derivative = result.derivative.as_ref().unwrap();
+    let time_spectrum = result.time_spectrum.as_ref().unwrap();
+
+    assert_eq!(time_spectrum.len(), derivative.log_time_pad.len());
+    assert!(
+        time_spectrum.iter().all(|value| value.is_finite()),
+        "Fourier time spectrum contains non-finite values"
+    );
+    assert!(
+        time_spectrum.iter().any(|value| value.abs() > 1e-12),
+        "Fourier time spectrum is all zeros"
+    );
+    assert!(result.foster.is_some());
+    assert!(result.cauer.is_none());
+}
+
+#[test]
 fn invalid_evaluation_params_return_errors() {
     let input = TransientInput::from_pairs([(1e-6, 0.1), (1e-5, 0.2)]).unwrap();
     let mut params = EvaluationParams::default();
