@@ -136,6 +136,8 @@ implementation remains the reference implementation.
     dict-parameter facade
   - `Evaluation().comparison_module({...})` for standard-evaluation sweeps
     against generated theoretical impedance inputs
+  - `Evaluation().comparison_module({...})` for optimization sweeps, comparing
+    optimized RC responses against the first sweep variant
   - `Evaluation().standard_module({...})` with `input_mode="t3ster"` and
     `infile`/`infile_pwr`/`infile_tco` or `input`/`t3ster_power`/
     `t3ster_calibration`
@@ -220,8 +222,8 @@ Lanczos Cauer coverage currently checks:
   models or from existing impedance inputs with deterministic seeded noise.
   The PyO3 bootstrap facade covers both theoretical aliases and existing
   impedance `data`.  PyO3 also has standard-only
-  `comparison_module` sweep support, but it does not yet port Python's
-  bootstrap comparison modes or optimization comparison modes.
+  `comparison_module` support for standard and optimization sweeps, but it
+  does not yet port Python's bootstrap comparison modes.
 - Temperature prediction core and PyO3 helpers now support explicit impulse
   responses, Foster RC parameters, optimization-result dictionaries, and a
   minimal internal optimization path from RC optimization parameters.  Remaining

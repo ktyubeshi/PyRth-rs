@@ -147,8 +147,9 @@ Goal:
 - The PyO3 `standard_module_set` facade now supports standard-evaluation
   sweeps, which is the next building block for `comparison_module` parity.
 - PyO3 `comparison_module` now covers standard-evaluation sweeps against
-  generated theoretical impedance inputs.  Bootstrap and optimization
-  comparison modes remain separate work.
+  generated theoretical impedance inputs and optimization sweeps over the
+  current RC optimizer helper.  Bootstrap comparison modes remain separate
+  work.
 - PyO3 `save_as_csv` exports every registered standard-evaluation module into
   per-label output directories.
 - PyO3 standard-evaluation methods now return minimal `StructureFunction`
