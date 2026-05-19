@@ -65,6 +65,24 @@ def main() -> None:
     )
     assert_impedance_only(module_set)
 
+    swept_modules = evaluation.standard_module_set(
+        {
+            "data": DATA,
+            "only_make_z": True,
+            "structure_method": "lanczos",
+            "label": "sweep",
+            "evaluation_type": "standard",
+            "iterable_keywords": ["power_step"],
+            "power_step": [1.0, 2.0],
+        }
+    )
+    assert len(swept_modules) == 2
+    assert_impedance_only(swept_modules[0])
+    assert_impedance_only(swept_modules[1])
+    labels_after_sweep = evaluation.module_labels()
+    assert "sweep_power_step_0" in labels_after_sweep
+    assert "sweep_power_step_1" in labels_after_sweep
+
     labeled = evaluation.standard_module(
         {
             "data": DATA,

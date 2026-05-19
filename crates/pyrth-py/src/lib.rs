@@ -5,7 +5,7 @@ use std::{collections::HashMap, fs, path::Path, sync::RwLock};
 use pyo3::{
     exceptions::PyValueError,
     prelude::*,
-    types::{PyAny, PyDict},
+    types::{PyAny, PyDict, PyList},
 };
 pub use pyrth_core::*;
 
@@ -36,6 +36,9 @@ impl Evaluation {
         py: Python<'_>,
         parameters: &Bound<'_, PyDict>,
     ) -> PyResult<PyObject> {
+        if parameters.get_item("iterable_keywords")?.is_some() {
+            return self.standard_module_sweep(py, parameters);
+        }
         self.standard_module(py, parameters)
     }
 
@@ -257,6 +260,52 @@ impl Evaluation {
             .read()
             .map_err(|_| PyValueError::new_err("failed to lock Evaluation modules"))?
             .len())
+    }
+
+    fn standard_module_sweep(
+        &self,
+        py: Python<'_>,
+        parameters: &Bound<'_, PyDict>,
+    ) -> PyResult<PyObject> {
+        let evaluation_type = extract_string(parameters, "evaluation_type")?
+            .ok_or_else(|| PyValueError::new_err("evaluation_type is required"))?;
+        if !evaluation_type.eq_ignore_ascii_case("standard") {
+            return Err(PyValueError::new_err(
+                "standard_module_set currently supports evaluation_type='standard' only",
+            ));
+        }
+        let base_label = extract_string(parameters, "label")?
+            .ok_or_else(|| PyValueError::new_err("label is required"))?;
+        let iterable_keywords = require_string_list(parameters, "iterable_keywords")?;
+        if iterable_keywords.is_empty() {
+            return Err(PyValueError::new_err(
+                "iterable_keywords must contain at least one key",
+            ));
+        }
+
+        let mut iterables = Vec::with_capacity(iterable_keywords.len());
+        for keyword in &iterable_keywords {
+            iterables.push(require_object_list(parameters, keyword)?);
+        }
+        let set_len = iterables[0].len();
+        if iterables.iter().any(|items| items.len() != set_len) {
+            return Err(PyValueError::new_err(
+                "Iterables do not have the same length",
+            ));
+        }
+
+        let mut modules = Vec::with_capacity(set_len);
+        for index in 0..set_len {
+            let variant = clone_dict(py, parameters)?;
+            let label_suffix = format!("{}_{}", iterable_keywords[0], index);
+            variant.set_item("label", format!("{base_label}_{label_suffix}"))?;
+            for (keyword, values) in iterable_keywords.iter().zip(iterables.iter()) {
+                variant.set_item(keyword, values[index].clone_ref(py))?;
+            }
+            modules.push(self.standard_module(py, &variant)?);
+        }
+
+        Ok(PyList::new(py, modules)?.into())
     }
 
     #[pyo3(signature = (output_dir="output/csv"))]
@@ -1111,6 +1160,33 @@ fn extract_vec_f64(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option
         .map(|value| value.extract::<Vec<f64>>())
         .transpose()
         .map_err(|err| PyValueError::new_err(format!("{key} must be a sequence of numbers: {err}")))
+}
+
+fn require_string_list(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Vec<String>> {
+    parameters
+        .get_item(key)?
+        .ok_or_else(|| PyValueError::new_err(format!("{key} is required")))?
+        .extract::<Vec<String>>()
+        .map_err(|err| PyValueError::new_err(format!("{key} must be a sequence of strings: {err}")))
+}
+
+fn require_object_list(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Vec<PyObject>> {
+    parameters
+        .get_item(key)?
+        .ok_or_else(|| PyValueError::new_err(format!("{key} is required")))?
+        .extract::<Vec<PyObject>>()
+        .map_err(|err| PyValueError::new_err(format!("{key} must be a sequence: {err}")))
+}
+
+fn clone_dict<'py>(
+    py: Python<'py>,
+    parameters: &Bound<'py, PyDict>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let output = PyDict::new(py);
+    for (key, value) in parameters.iter() {
+        output.set_item(key, value)?;
+    }
+    Ok(output)
 }
 
 fn extract_pairs(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Vec<(f64, f64)>>> {
