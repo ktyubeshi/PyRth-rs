@@ -408,21 +408,30 @@ impl Evaluation {
 
     #[pyo3(signature = (output_dir="output/csv"))]
     fn save_as_csv(&self, py: Python<'_>, output_dir: &str) -> PyResult<PyObject> {
-        let Some(result) = self
-            .last_result
+        let modules = self
+            .modules
             .read()
-            .map_err(|_| PyValueError::new_err("failed to lock Evaluation result state"))?
-            .as_ref()
-            .cloned()
-        else {
+            .map_err(|_| PyValueError::new_err("failed to lock Evaluation modules"))?
+            .clone();
+        if modules.is_empty() {
             return Err(PyValueError::new_err(
-                "save_as_csv requires a previous standard_module, standard, or standard_module_set call",
+                "save_as_csv requires at least one previous standard_module, standard, or standard_module_set call",
             ));
         };
-        let files = pyrth_core::export_csv(&result, output_dir)
-            .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
-        exported_csv_files_to_dict(py, files)
+        let output = PyDict::new(py);
+        let mut labels = modules.keys().cloned().collect::<Vec<_>>();
+        labels.sort();
+        for label in labels {
+            let result = modules
+                .get(&label)
+                .ok_or_else(|| PyValueError::new_err("failed to read Evaluation module"))?;
+            let files = pyrth_core::export_csv(result, Path::new(output_dir).join(&label))
+                .map_err(|err| PyValueError::new_err(err.to_string()))?;
+            output.set_item(label, exported_csv_files_to_dict(py, files)?)?;
+        }
+
+        Ok(output.into())
     }
 
     #[pyo3(signature = (output_dir="output/csv"))]

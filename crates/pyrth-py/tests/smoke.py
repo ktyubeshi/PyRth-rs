@@ -139,9 +139,17 @@ def main() -> None:
     csv_dir = REPO_ROOT / "target" / "tmp" / "pyrth-py-smoke-csv"
     shutil.rmtree(csv_dir, ignore_errors=True)
     saved = evaluation.save_as_csv(str(csv_dir))
-    assert sorted(saved) == ["impedance"]
-    assert Path(saved["impedance"]).exists()
-    assert Path(saved["impedance"]).read_text().splitlines()[0] == "time,impedance"
+    assert "no_label" in saved
+    assert "sweep_power_step_0" in saved
+    assert "sweep_power_step_1" in saved
+    assert sorted(saved["no_label"]) == ["impedance"]
+    assert Path(saved["no_label"]["impedance"]).exists()
+    assert (
+        Path(saved["no_label"]["impedance"]).read_text().splitlines()[0]
+        == "time,impedance"
+    )
+    assert Path(saved["sweep_power_step_0"]["impedance"]).exists()
+    assert Path(saved["sweep_power_step_1"]["impedance"]).exists()
 
     lasso_module = evaluation.standard_module(
         {
