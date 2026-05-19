@@ -10,3 +10,4 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 pyrth-core = { path = "../pyrth-core" }
+pyo3 = { version = "0.23", features = ["extension-module"] }
