@@ -826,6 +826,7 @@ impl Evaluation {
     }
 }
 
+#[derive(Clone, Copy)]
 enum ExportKind {
     Csv,
     Figure,
@@ -843,12 +844,9 @@ impl Evaluation {
             .read()
             .map_err(|_| PyValueError::new_err("failed to lock Evaluation modules"))?
             .clone();
-        if !modules
-            .values()
-            .any(|module| matches!(module, EvaluationModule::Structure(_)))
-        {
+        if modules.is_empty() {
             return Err(PyValueError::new_err(
-                "save_as_csv requires at least one previous standard_module, standard, or standard_module_set call",
+                "save_as_csv requires at least one previous module-producing call",
             ));
         };
 
@@ -859,20 +857,23 @@ impl Evaluation {
             let result = modules
                 .get(&label)
                 .ok_or_else(|| PyValueError::new_err("failed to read Evaluation module"))?;
-            let EvaluationModule::Structure(result) = result else {
-                continue;
-            };
             let module_output_dir = Path::new(output_dir).join(&label);
-            let files = match export_kind {
-                ExportKind::Csv => {
-                    let files = pyrth_core::export_csv(result, module_output_dir)
+            let files = match (result, export_kind) {
+                (EvaluationModule::Structure(result), ExportKind::Csv) => {
+                    let files = pyrth_core::export_csv(result, &module_output_dir)
                         .map_err(|err| PyValueError::new_err(err.to_string()))?;
                     exported_csv_files_to_dict(py, files)?
                 }
-                ExportKind::Figure => {
-                    let files = pyrth_core::export_svg_figures(result, module_output_dir)
+                (EvaluationModule::Structure(result), ExportKind::Figure) => {
+                    let files = pyrth_core::export_svg_figures(result, &module_output_dir)
                         .map_err(|err| PyValueError::new_err(err.to_string()))?;
                     exported_figure_files_to_dict(py, files)?
+                }
+                (EvaluationModule::TemperaturePrediction(result), ExportKind::Csv) => {
+                    export_temperature_prediction_csv(py, result, &module_output_dir)?
+                }
+                (EvaluationModule::TemperaturePrediction(result), ExportKind::Figure) => {
+                    export_temperature_prediction_svg(py, result, &module_output_dir)?
                 }
             };
             output.set_item(label, files)?;
@@ -1684,6 +1685,119 @@ fn temperature_prediction_to_dict(
     output.set_item("time", time)?;
     output.set_item("temperature", temperature)?;
     Ok(output.into())
+}
+
+fn export_temperature_prediction_csv(
+    py: Python<'_>,
+    result: &TemperaturePredictionModule,
+    output_dir: &Path,
+) -> PyResult<PyObject> {
+    fs::create_dir_all(output_dir).map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let path = output_dir.join("temperature_prediction.csv");
+    let mut csv = String::from("time,temperature\n");
+    for (time, temperature) in result.time.iter().zip(&result.temperature) {
+        csv.push_str(&format!("{time:.17e},{temperature:.17e}\n"));
+    }
+    fs::write(&path, csv).map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let output = PyDict::new(py);
+    output.set_item("temperature_prediction", path.to_string_lossy().to_string())?;
+    Ok(output.into())
+}
+
+fn export_temperature_prediction_svg(
+    py: Python<'_>,
+    result: &TemperaturePredictionModule,
+    output_dir: &Path,
+) -> PyResult<PyObject> {
+    fs::create_dir_all(output_dir).map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let path = output_dir.join("temperature_prediction.svg");
+    let points = result
+        .time
+        .iter()
+        .zip(&result.temperature)
+        .filter(|(time, temperature)| time.is_finite() && temperature.is_finite())
+        .map(|(time, temperature)| (*time, *temperature))
+        .collect::<Vec<_>>();
+    fs::write(&path, render_temperature_prediction_svg(&points))
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let output = PyDict::new(py);
+    output.set_item("temperature_prediction", path.to_string_lossy().to_string())?;
+    Ok(output.into())
+}
+
+fn render_temperature_prediction_svg(points: &[(f64, f64)]) -> String {
+    const WIDTH: f64 = 720.0;
+    const HEIGHT: f64 = 420.0;
+    const LEFT: f64 = 72.0;
+    const TOP: f64 = 42.0;
+    const RIGHT: f64 = 24.0;
+    const BOTTOM: f64 = 58.0;
+
+    let plot_width = WIDTH - LEFT - RIGHT;
+    let plot_height = HEIGHT - TOP - BOTTOM;
+    let (min_x, max_x, min_y, max_y) = bounds_for_pairs(points);
+    let polyline = points
+        .iter()
+        .map(|(x, y)| {
+            let px = LEFT + normalize_svg_value(*x, min_x, max_x) * plot_width;
+            let py = TOP + (1.0 - normalize_svg_value(*y, min_y, max_y)) * plot_height;
+            format!("{px:.3},{py:.3}")
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH:.0} {HEIGHT:.0}" role="img" data-x-scale="linear" data-y-scale="linear">
+  <title>Temperature prediction</title>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="{LEFT:.0}" y="24" font-family="sans-serif" font-size="18" fill="#111111">Temperature prediction</text>
+  <line x1="{LEFT:.0}" y1="{:.0}" x2="{:.0}" y2="{:.0}" stroke="#222222" stroke-width="1"/>
+  <line x1="{LEFT:.0}" y1="{TOP:.0}" x2="{LEFT:.0}" y2="{:.0}" stroke="#222222" stroke-width="1"/>
+  <polyline fill="none" stroke="#b45309" stroke-width="2" points="{}"/>
+  <text x="{:.0}" y="{:.0}" font-family="sans-serif" font-size="12" fill="#333333">time</text>
+  <text x="12" y="{:.0}" font-family="sans-serif" font-size="12" fill="#333333" transform="rotate(-90 12,{:.0})">temperature</text>
+</svg>
+"##,
+        TOP + plot_height,
+        LEFT + plot_width,
+        TOP + plot_height,
+        TOP + plot_height,
+        polyline,
+        LEFT + plot_width / 2.0,
+        HEIGHT - 16.0,
+        TOP + plot_height / 2.0,
+        TOP + plot_height / 2.0,
+    )
+}
+
+fn bounds_for_pairs(points: &[(f64, f64)]) -> (f64, f64, f64, f64) {
+    if points.is_empty() {
+        return (0.0, 1.0, 0.0, 1.0);
+    }
+
+    let (mut min_x, mut max_x) = (points[0].0, points[0].0);
+    let (mut min_y, mut max_y) = (points[0].1, points[0].1);
+    for (x, y) in points.iter().copied() {
+        min_x = min_x.min(x);
+        max_x = max_x.max(x);
+        min_y = min_y.min(y);
+        max_y = max_y.max(y);
+    }
+    if min_x == max_x {
+        min_x -= 0.5;
+        max_x += 0.5;
+    }
+    if min_y == max_y {
+        min_y -= 0.5;
+        max_y += 0.5;
+    }
+    (min_x, max_x, min_y, max_y)
+}
+
+fn normalize_svg_value(value: f64, min: f64, max: f64) -> f64 {
+    ((value - min) / (max - min)).clamp(0.0, 1.0)
 }
 
 fn transient_input_from_pairs_unchecked(pairs: Vec<(f64, f64)>) -> pyrth_core::TransientInput {

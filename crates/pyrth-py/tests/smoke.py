@@ -469,6 +469,28 @@ def main() -> None:
     assert evaluation.module_count() == count_before_prediction + 1
     assert evaluation.module_count() == len(labels_after_prediction)
 
+    prediction_csv_dir = REPO_ROOT / "target" / "tmp" / "pyrth-py-smoke-prediction-csv"
+    shutil.rmtree(prediction_csv_dir, ignore_errors=True)
+    prediction_csv = evaluation.save_as_csv(str(prediction_csv_dir))
+    prediction_csv_path = Path(
+        prediction_csv["temperature_prediction_smoke"]["temperature_prediction"]
+    )
+    assert prediction_csv_path.exists()
+    assert prediction_csv_path.read_text().splitlines()[0] == "time,temperature"
+
+    prediction_figure_dir = (
+        REPO_ROOT / "target" / "tmp" / "pyrth-py-smoke-prediction-figures"
+    )
+    shutil.rmtree(prediction_figure_dir, ignore_errors=True)
+    prediction_figures = evaluation.save_figures(str(prediction_figure_dir))
+    prediction_svg_path = Path(
+        prediction_figures["temperature_prediction_smoke"]["temperature_prediction"]
+    )
+    assert prediction_svg_path.exists()
+    prediction_svg = prediction_svg_path.read_text()
+    assert prediction_svg.startswith("<svg ")
+    assert "Temperature prediction" in prediction_svg
+
     predicted_from_rc = evaluation.temperature_prediction(
         {
             "resistance": [1.0],
