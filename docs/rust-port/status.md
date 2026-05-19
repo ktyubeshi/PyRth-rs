@@ -107,9 +107,13 @@ implementation remains the reference implementation.
     alias behavior preserved for simple parameter dictionaries
   - `Evaluation().module_labels()` and `Evaluation().module_count()` for the
     current minimal module registry, including duplicate-label suffixing
-  - `Evaluation().module(label)` returns a minimal `StructureFunction` PyO3
-    object with common result attributes, `to_dict()`, dict-like key access,
-    and compatibility with `Evaluation().comparison(...)`
+  - `Evaluation().standard_module(...)`, `standard(...)`, and
+    `standard_module_set(...)` return minimal `StructureFunction` PyO3 objects
+    with common result attributes, `to_dict()`, dict-like key access,
+    iteration over result keys, and compatibility with
+    `Evaluation().comparison(...)`
+  - `Evaluation().module(label)` returns a registered `StructureFunction`
+    object by label
   - `Evaluation().save_as_csv(output_dir="output/csv")` and `save_all(...)`
     export all registered standard-evaluation modules through the core CSV
     exporter into per-label subdirectories
@@ -196,11 +200,10 @@ Lanczos Cauer coverage currently checks:
   selection in a few positions.  `led_derivative_python_golden_diagnostic`
   is an ignored golden test that reports the current first mismatch and max
   deltas without changing production output.
-- PyO3 high-level evaluation methods still return plain Python dictionaries
-  rather than existing Python `StructureFunction` objects.  `Evaluation` keeps
-  a minimal label-to-result module registry, can return registered modules via
-  `module(label)`, and exports them via `save_as_csv(...)`, but full Python
-  object behavior, exporter hooks, and figure export are still missing.
+- PyO3 standard-evaluation methods now return minimal `StructureFunction`
+  objects instead of plain dictionaries while preserving dict-like read access
+  for smoke-level compatibility.  Full Python object behavior, exporter hooks,
+  and figure export are still missing.
 - Adaptive deconvolution is a minimal deterministic sparse implementation, not
   full Python adaptive parity.
 - MPFR structure methods and full Python optimization parity are only partly

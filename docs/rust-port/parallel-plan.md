@@ -151,6 +151,8 @@ Goal:
   comparison modes remain separate work.
 - PyO3 `save_as_csv` exports every registered standard-evaluation module into
   per-label output directories.
+- PyO3 standard-evaluation methods now return minimal `StructureFunction`
+  objects with dict-like read access rather than bare dictionaries.
 
 ### H. Theoretical Bootstrap
 
