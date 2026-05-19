@@ -108,15 +108,18 @@ pub fn z_fit_deriv(
 
             let mut weights = Vec::with_capacity(t_frame.len());
             for (offset, time) in t_frame.iter().copied().enumerate() {
-                let frame_weight =
-                    (1.0 - ((time - center_time) / max_dist).abs().powf(3.0)).powf(3.0);
+                let normalized_distance = ((time - center_time) / max_dist).abs();
+                let normalized_distance_cubed =
+                    normalized_distance * normalized_distance * normalized_distance;
+                let taper = 1.0 - normalized_distance_cubed;
+                let frame_weight = taper * taper * taper;
                 weights.push(frame_weight * global_weight[low + offset]);
             }
 
             let coefs = polyfit(t_frame, z_frame, &weights);
             let poly_value = coefs.slope * t_val + coefs.intercept;
 
-            let var = params.expected_var.powf(2.0);
+            let var = params.expected_var * params.expected_var;
             let dif_spread = 0.1;
 
             let mut z_frame_copy = z_frame.to_vec();
@@ -129,7 +132,7 @@ pub fn z_fit_deriv(
             let polval_upper = coefs_upper.slope * t_val + coefs_upper.intercept;
 
             let diff_term = ((polval_upper - polval_lower) / (2.0 * dif_spread * poly_value)).abs();
-            let estimator = poly_value.powf(2.0) - 2.0 * z_frame[center_index] * poly_value
+            let estimator = poly_value * poly_value - 2.0 * z_frame[center_index] * poly_value
                 + 2.0 * var * diff_term;
 
             if estimator < best_estimator {
@@ -219,7 +222,10 @@ fn polyfit(x: &[f64], y: &[f64], weights: &[f64]) -> LinearCoefficients {
     let denominator = weights
         .iter()
         .zip(x)
-        .map(|(weight, x)| weight * (x - weighted_mean_x).powf(2.0))
+        .map(|(weight, x)| {
+            let centered = x - weighted_mean_x;
+            weight * centered * centered
+        })
         .sum::<f64>();
 
     LinearCoefficients {

@@ -168,22 +168,22 @@ fn led_derivative_stays_within_known_python_golden_gap() {
         &format!("{fixture_name}:imp_smooth"),
         &derivative.imp_smooth,
         &fixture.reference.imp_smooth,
-        1.2e-2,
-        1.2e-2,
+        8.5e-5,
+        8.5e-3,
     );
     assert_array_close_with_tolerance(
         &format!("{fixture_name}:imp_smooth_full"),
         &derivative.imp_smooth_full,
         &fixture.reference.imp_smooth_full,
-        1.2e-2,
-        1.2e-2,
+        8.5e-5,
+        8.5e-3,
     );
     assert_array_close_with_tolerance(
         &format!("{fixture_name}:imp_deriv_interp"),
         &derivative.imp_deriv_interp,
         &fixture.reference.imp_deriv_interp,
-        1.2e-2,
-        1.4e-2,
+        3.0e-5,
+        6.5e-3,
     );
 }
 
