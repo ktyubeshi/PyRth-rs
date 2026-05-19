@@ -92,9 +92,11 @@ Goal:
 - Keep file I/O at the CLI/PyO3 boundary and keep core parser functions
   testable from strings.
 
-### E. Lasso Deconvolution
+### E. Lasso And Adaptive Deconvolution
 
-Status: implemented in core with deterministic non-negative coordinate descent.
+Status: Lasso is implemented in core with deterministic non-negative coordinate
+descent.  Adaptive mode reuses the deterministic sparse solver with Python-style
+Bayesian prior column weights.
 
 Owned paths:
 
@@ -105,10 +107,10 @@ Owned paths:
 
 Goal:
 
-- Provide a deterministic sparse deconvolution path without pulling in a
+- Provide deterministic sparse deconvolution paths without pulling in a
   scikit-learn equivalent.
-- Keep adaptive mode explicitly unsupported until a separate implementation is
-  available.
+- Continue by moving Lasso/adaptive closer to Python's impedance-domain design
+  matrix and optional cross-validation behavior.
 
 ### F. Theoretical And Prediction
 

@@ -24,7 +24,8 @@ implementation remains the reference implementation.
   - Fourier deconvolution with `hann`, `rectangular`, `gauss`, `fermi`,
     `nuttall`, `blackman_nuttall`, and `blackman_harris` filters
   - Lasso deconvolution with deterministic non-negative coordinate descent
-  - Adaptive deconvolution as deterministic scaled-alpha sparse Lasso
+  - Adaptive deconvolution as deterministic sparse Lasso weighted by a
+    Bayesian prior spectrum
   - Foster network conversion
   - Lanczos Cauer conversion
 - Theoretical helpers:
@@ -222,8 +223,12 @@ Lanczos Cauer coverage currently checks:
   and common Python-style array aliases for smoke-level compatibility.  CSV and
   simple SVG figure export work through registered modules.  Full Python object
   behavior and Matplotlib-style figure parity are still missing.
-- Adaptive deconvolution is a minimal deterministic sparse implementation, not
-  full Python adaptive parity.
+- Adaptive deconvolution now follows the Python flow more closely by using a
+  Bayesian prior spectrum as clipped Lasso column weights.  It is still not full
+  Python adaptive parity because the Rust Lasso solver is deterministic
+  coordinate descent rather than scikit-learn `Lasso`/`LassoCV`, and the current
+  Lasso path still works in the derivative-response basis rather than the full
+  Python impedance-domain design matrix.
 - MPFR structure methods and full Python optimization parity are only partly
   ported.  With the non-default `mpfr` Cargo feature, `polylong` now routes
   through a `rug::Float` Foster rational/poly-long conversion using
