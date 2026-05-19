@@ -242,6 +242,25 @@ fn fourier_deconvolution_filter_changes_time_spectrum() {
 }
 
 #[test]
+fn unimplemented_deconvolution_modes_return_errors() {
+    for deconv_mode in [DeconvMode::Lasso, DeconvMode::Adaptive] {
+        let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
+        let mut params = params_from_fixture(&fixture);
+        params.deconv_mode = deconv_mode;
+
+        let input =
+            TransientInput::from_pairs(fixture.input.data.iter().map(|pair| (pair[0], pair[1])))
+                .unwrap();
+        let err = evaluate(input, &params).unwrap_err();
+
+        assert!(matches!(
+            err,
+            PyrthError::UnsupportedDeconvolutionMode(mode) if mode == deconv_mode.to_string()
+        ));
+    }
+}
+
+#[test]
 fn invalid_evaluation_params_return_errors() {
     let input = TransientInput::from_pairs([(1e-6, 0.1), (1e-5, 0.2)]).unwrap();
     let mut params = EvaluationParams::default();

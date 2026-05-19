@@ -89,10 +89,12 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
 
     let derivative = z_fit_deriv(&impedance.impedance, &impedance.log_time, params)?;
     let time_spectrum = match params.deconv_mode {
-        DeconvMode::Bayesian => time_spectrum_bayesian(&derivative, params),
-        DeconvMode::Fourier => time_spectrum_fourier(&derivative, params),
-        DeconvMode::Lasso | DeconvMode::Adaptive => time_spectrum_bayesian(&derivative, params),
-    };
+        DeconvMode::Bayesian => Ok(time_spectrum_bayesian(&derivative, params)),
+        DeconvMode::Fourier => Ok(time_spectrum_fourier(&derivative, params)),
+        DeconvMode::Lasso | DeconvMode::Adaptive => Err(PyrthError::UnsupportedDeconvolutionMode(
+            params.deconv_mode.to_string(),
+        )),
+    }?;
     let foster = foster_from_time_spectrum(&derivative.log_time_pad, &time_spectrum, 1e-10)?;
     let cauer = if params.calc_struc {
         Some(cauer_from_foster_lanczos(

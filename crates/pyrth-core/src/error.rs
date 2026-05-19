@@ -29,6 +29,9 @@ pub enum PyrthError {
     #[error("unsupported input mode for this stage: {0}")]
     UnsupportedInputMode(String),
 
+    #[error("unsupported deconvolution mode for this stage: {0}")]
+    UnsupportedDeconvolutionMode(String),
+
     #[error("unknown {kind} label: {value}")]
     UnknownMode { kind: &'static str, value: String },
 
