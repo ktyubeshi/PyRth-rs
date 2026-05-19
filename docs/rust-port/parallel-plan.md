@@ -146,6 +146,9 @@ Goal:
   Foster output as a fallback.
 - The PyO3 `standard_module_set` facade now supports standard-evaluation
   sweeps, which is the next building block for `comparison_module` parity.
+- PyO3 `comparison_module` now covers standard-evaluation sweeps against
+  generated theoretical impedance inputs.  Bootstrap and optimization
+  comparison modes remain separate work.
 
 ### H. Theoretical Bootstrap
 

@@ -115,6 +115,8 @@ implementation remains the reference implementation.
     or two standard-evaluation parameter dicts; it also accepts
     `Evaluation().comparison({"reference": ..., "candidate": ...})` as a thin
     dict-parameter facade
+  - `Evaluation().comparison_module({...})` for standard-evaluation sweeps
+    against generated theoretical impedance inputs
   - `Evaluation().standard_module({...})` with `input_mode="t3ster"` and
     `infile`/`infile_pwr`/`infile_tco` or `input`/`t3ster_power`/
     `t3ster_calibration`
@@ -190,10 +192,10 @@ Lanczos Cauer coverage currently checks:
   the Python raw output can include a zero trailing resistance that does not
   fit the current `CauerNetwork` contract.
 - Bootstrap and comparison currently cover core numerical helpers and thin
-  `Evaluation` dict facades only.  They do not port Python's wider
-  `bootstrap_*`/`comparison_module` orchestration or exporter parity.  Standard
-  module-set sweeps and result module registration are partially available in
-  PyO3.
+  `Evaluation` dict facades.  PyO3 also has standard-only
+  `comparison_module` sweep support, but it does not yet port Python's
+  bootstrap comparison modes, optimization comparison modes, percentile
+  bootstrap outputs, or exporter parity.
 - Temperature prediction core and PyO3 helpers now support explicit impulse
   responses, Foster RC parameters, and optimization-result dictionaries, but
   the PyO3 `temperature_prediction` facade still does not run a full
