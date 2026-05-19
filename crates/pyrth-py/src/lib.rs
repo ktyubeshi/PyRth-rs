@@ -55,16 +55,34 @@ impl Evaluation {
     }
 
     fn bootstrap(&self, py: Python<'_>, parameters: &Bound<'_, PyDict>) -> PyResult<PyObject> {
-        let resistance =
-            require_first_vec_f64(parameters, &["resistance", "theoretical_resistance"])?;
-        let capacitance =
-            require_first_vec_f64(parameters, &["capacitance", "theoretical_capacitance"])?;
-        let time_start = require_first_f64(parameters, &["time_start"])?;
-        let time_end = require_first_f64(parameters, &["time_end"])?;
-        let time_size = require_first_usize(parameters, &["time_size"])?;
+        let resistance = require_first_vec_f64(
+            parameters,
+            &["resistance", "theoretical_resistance", "theo_resistances"],
+        )?;
+        let capacitance = require_first_vec_f64(
+            parameters,
+            &[
+                "capacitance",
+                "theoretical_capacitance",
+                "theo_capacitances",
+            ],
+        )?;
+        let (time_start, time_end) = theoretical_time_range(parameters)?;
+        let time_size = extract_usize(parameters, "time_size")?
+            .or(extract_usize(parameters, "theo_time_size")?)
+            .ok_or_else(|| PyValueError::new_err("time_size or theo_time_size is required"))?;
         let repetitions = require_first_usize(parameters, &["repetitions"])?;
-        let noise_std = require_first_f64(parameters, &["noise_std"])?;
-        let seed = extract_u64(parameters, "seed")?.unwrap_or(0);
+        let noise_std = bootstrap_noise_std(
+            parameters,
+            &resistance,
+            &capacitance,
+            time_start,
+            time_end,
+            time_size,
+        )?;
+        let seed = extract_u64(parameters, "seed")?
+            .or(extract_u64(parameters, "random_seed")?)
+            .unwrap_or(0);
 
         bootstrap_theoretical(
             py,
@@ -595,6 +613,39 @@ fn theoretical_time_range(parameters: &Bound<'_, PyDict>) -> PyResult<(f64, f64)
         require_first_f64(parameters, &["time_start"])?,
         require_first_f64(parameters, &["time_end"])?,
     ))
+}
+
+fn bootstrap_noise_std(
+    parameters: &Bound<'_, PyDict>,
+    resistance: &[f64],
+    capacitance: &[f64],
+    time_start: f64,
+    time_end: f64,
+    time_size: usize,
+) -> PyResult<f64> {
+    if let Some(noise_std) = extract_f64(parameters, "noise_std")? {
+        return Ok(noise_std);
+    }
+    let signal_to_noise_ratio = require_first_f64(parameters, &["signal_to_noise_ratio"])?;
+    if !signal_to_noise_ratio.is_finite() || signal_to_noise_ratio <= 0.0 {
+        return Err(PyValueError::new_err(
+            "signal_to_noise_ratio must be finite and greater than zero",
+        ));
+    }
+    let input = pyrth_core::theoretical_impedance_input(
+        resistance,
+        capacitance,
+        time_start,
+        time_end,
+        time_size,
+    )
+    .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let last_impedance = input
+        .value
+        .last()
+        .copied()
+        .ok_or_else(|| PyValueError::new_err("theoretical impedance is empty"))?;
+    Ok(last_impedance / signal_to_noise_ratio)
 }
 
 fn transient_input_to_pairs(input: &pyrth_core::TransientInput) -> Vec<(f64, f64)> {

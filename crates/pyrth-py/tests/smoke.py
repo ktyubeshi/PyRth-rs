@@ -229,6 +229,21 @@ def main() -> None:
     )
     assert all(math.isfinite(value) for value in bootstrap_facade["time_spectrum_mean"])
 
+    bootstrap_python_aliases = evaluation.bootstrap(
+        {
+            "theo_resistances": [1.0, 2.0],
+            "theo_capacitances": [0.5, 1.5],
+            "theo_time": [1e-6, 1e-1],
+            "theo_time_size": 80,
+            "repetitions": 2,
+            "signal_to_noise_ratio": 1e12,
+            "random_seed": 7,
+        }
+    )
+    assert bootstrap_python_aliases["successful_repetitions"] == 2
+    assert len(bootstrap_python_aliases["impedance_median"]) == 80
+    assert len(bootstrap_python_aliases["time_spectrum_median"]) > 0
+
     target = pyrth_py.theoretical_impedance([1.0, 3.0], [0.4, 2.0], 1e-3, 1e2, 32)
     optimized = pyrth_py.optimize_rc(
         list(zip(target["time"], target["impedance"])),
