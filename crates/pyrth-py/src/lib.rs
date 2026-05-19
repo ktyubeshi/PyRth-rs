@@ -28,19 +28,25 @@ impl Evaluation {
 
         let only_make_z = extract_bool(parameters, "only_make_z")?.unwrap_or(false);
         let calc_struc = extract_bool(parameters, "calc_struc")?.unwrap_or(true);
+        let input_mode = extract_string(parameters, "input_mode")?;
         let log_time_size = extract_usize(parameters, "log_time_size")?;
         let bay_steps = extract_usize(parameters, "bay_steps")?;
         let blockwise_sum_width = extract_usize(parameters, "blockwise_sum_width")?;
+        let power_step = extract_f64(parameters, "power_step")?;
+        let is_heating = extract_bool(parameters, "is_heating")?.unwrap_or(false);
 
         evaluate_impedance_with_params(
             py,
             data,
             EvalOverrides {
+                input_mode,
                 only_make_z,
                 calc_struc,
                 log_time_size,
                 bay_steps,
                 blockwise_sum_width,
+                power_step,
+                is_heating,
             },
         )
     }
@@ -58,21 +64,27 @@ fn evaluate_impedance(
         py,
         data,
         EvalOverrides {
+            input_mode: None,
             only_make_z,
             calc_struc,
             log_time_size: None,
             bay_steps: None,
             blockwise_sum_width: None,
+            power_step: None,
+            is_heating: false,
         },
     )
 }
 
 struct EvalOverrides {
+    input_mode: Option<String>,
     only_make_z: bool,
     calc_struc: bool,
     log_time_size: Option<usize>,
     bay_steps: Option<usize>,
     blockwise_sum_width: Option<usize>,
+    power_step: Option<f64>,
+    is_heating: bool,
 }
 
 fn evaluate_impedance_with_params(
@@ -84,6 +96,10 @@ fn evaluate_impedance_with_params(
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
     let mut params = pyrth_core::EvaluationParams::default();
+    if let Some(input_mode) = overrides.input_mode {
+        params.input_mode = pyrth_core::InputMode::from_label(&input_mode)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    }
     params.only_make_z = overrides.only_make_z;
     params.calc_struc = overrides.calc_struc;
     if let Some(log_time_size) = overrides.log_time_size {
@@ -95,6 +111,10 @@ fn evaluate_impedance_with_params(
     if let Some(blockwise_sum_width) = overrides.blockwise_sum_width {
         params.blockwise_sum_width = blockwise_sum_width;
     }
+    if let Some(power_step) = overrides.power_step {
+        params.power_step = power_step;
+    }
+    params.is_heating = overrides.is_heating;
 
     let result = pyrth_core::evaluate(input, &params)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
@@ -170,4 +190,20 @@ fn extract_usize(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<u
         .map(|value| value.extract::<usize>())
         .transpose()
         .map_err(|err| PyValueError::new_err(format!("{key} must be a positive integer: {err}")))
+}
+
+fn extract_f64(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<f64>> {
+    parameters
+        .get_item(key)?
+        .map(|value| value.extract::<f64>())
+        .transpose()
+        .map_err(|err| PyValueError::new_err(format!("{key} must be a number: {err}")))
+}
+
+fn extract_string(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<String>> {
+    parameters
+        .get_item(key)?
+        .map(|value| value.extract::<String>())
+        .transpose()
+        .map_err(|err| PyValueError::new_err(format!("{key} must be a string: {err}")))
 }

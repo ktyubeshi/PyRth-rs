@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use pyrth_core::{evaluate, export_csv, EvaluationParams, TransientInput};
+use pyrth_core::{evaluate, export_csv, EvaluationParams, InputMode, TransientInput};
 
 fn main() {
     if let Err(err) = run() {
@@ -20,6 +20,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let input = read_two_column_data(&args.input)?;
 
     let mut params = EvaluationParams::default();
+    params.input_mode = args.input_mode;
     params.only_make_z = args.only_make_z;
     params.calc_struc = !args.no_structure;
     if let Some(log_time_size) = args.log_time_size {
@@ -37,6 +38,10 @@ fn run() -> Result<(), Box<dyn Error>> {
     if let Some(minimum_window_size) = args.minimum_window_size {
         params.minimum_window_size = minimum_window_size;
     }
+    if let Some(power_step) = args.power_step {
+        params.power_step = power_step;
+    }
+    params.is_heating = args.is_heating;
 
     let result = evaluate(input, &params)?;
     export_csv(&result, &args.output_dir)?;
@@ -47,6 +52,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 struct CliArgs {
     input: PathBuf,
     output_dir: PathBuf,
+    input_mode: InputMode,
     only_make_z: bool,
     no_structure: bool,
     log_time_size: Option<usize>,
@@ -54,12 +60,15 @@ struct CliArgs {
     blockwise_sum_width: Option<usize>,
     min_index: Option<usize>,
     minimum_window_size: Option<usize>,
+    power_step: Option<f64>,
+    is_heating: bool,
 }
 
 impl CliArgs {
     fn parse(args: impl Iterator<Item = String>) -> Result<Self, Box<dyn Error>> {
         let mut input = None;
         let mut output_dir = None;
+        let mut input_mode = InputMode::Impedance;
         let mut only_make_z = false;
         let mut no_structure = false;
         let mut log_time_size = None;
@@ -67,6 +76,8 @@ impl CliArgs {
         let mut blockwise_sum_width = None;
         let mut min_index = None;
         let mut minimum_window_size = None;
+        let mut power_step = None;
+        let mut is_heating = false;
 
         let mut args = args.peekable();
         while let Some(arg) = args.next() {
@@ -92,6 +103,12 @@ impl CliArgs {
                     minimum_window_size =
                         Some(parse_next_usize(&mut args, "--minimum-window-size")?)
                 }
+                "--input-mode" => {
+                    let value = args.next().ok_or("missing value for --input-mode")?;
+                    input_mode = InputMode::from_label(&value)?;
+                }
+                "--power-step" => power_step = Some(parse_next_f64(&mut args, "--power-step")?),
+                "--is-heating" => is_heating = true,
                 _ if input.is_none() => input = Some(PathBuf::from(arg)),
                 _ if output_dir.is_none() => output_dir = Some(PathBuf::from(arg)),
                 _ => return Err(format!("unknown argument: {arg}").into()),
@@ -101,6 +118,7 @@ impl CliArgs {
         Ok(Self {
             input: input.ok_or("missing input path")?,
             output_dir: output_dir.unwrap_or_else(|| PathBuf::from("output/rust-cli")),
+            input_mode,
             only_make_z,
             no_structure,
             log_time_size,
@@ -108,13 +126,15 @@ impl CliArgs {
             blockwise_sum_width,
             min_index,
             minimum_window_size,
+            power_step,
+            is_heating,
         })
     }
 }
 
 fn print_usage() {
     println!(
-        "Usage: pyrth-cli --input <path> --output <dir> [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
+        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt] [--power-step <w>] [--is-heating] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
     );
 }
 
@@ -127,6 +147,18 @@ fn parse_next_usize(
         .ok_or_else(|| format!("missing value for {flag}"))?;
     value
         .parse::<usize>()
+        .map_err(|err| format!("invalid value for {flag}: {value} ({err})").into())
+}
+
+fn parse_next_f64(
+    args: &mut std::iter::Peekable<impl Iterator<Item = String>>,
+    flag: &str,
+) -> Result<f64, Box<dyn Error>> {
+    let value = args
+        .next()
+        .ok_or_else(|| format!("missing value for {flag}"))?;
+    value
+        .parse::<f64>()
         .map_err(|err| format!("invalid value for {flag}: {value} ({err})").into())
 }
 

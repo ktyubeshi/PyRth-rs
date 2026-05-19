@@ -156,6 +156,15 @@ pub struct EvaluationParams {
     pub blockwise_sum_width: usize,
     pub calc_struc: bool,
     pub only_make_z: bool,
+    pub power_step: f64,
+    pub power_scale_factor: f64,
+    pub optical_power: f64,
+    pub is_heating: bool,
+    pub data_cut_lower: usize,
+    pub data_cut_upper: Option<usize>,
+    pub temp_0_avg_range: (usize, usize),
+    pub kfac_fit_deg: usize,
+    pub calibration: Option<Vec<[f64; 2]>>,
 }
 
 impl Default for EvaluationParams {
@@ -179,6 +188,15 @@ impl Default for EvaluationParams {
             blockwise_sum_width: 20,
             calc_struc: true,
             only_make_z: false,
+            power_step: 1.0,
+            power_scale_factor: 1.0,
+            optical_power: 0.0,
+            is_heating: false,
+            data_cut_lower: 0,
+            data_cut_upper: None,
+            temp_0_avg_range: (0, 1),
+            kfac_fit_deg: 2,
+            calibration: None,
         }
     }
 }

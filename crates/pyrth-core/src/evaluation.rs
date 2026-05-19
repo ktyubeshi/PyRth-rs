@@ -48,9 +48,11 @@ pub struct EvaluationResult {
 pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<EvaluationResult> {
     validate_params(params)?;
     if params.input_mode != InputMode::Impedance {
-        return Err(PyrthError::UnsupportedInputMode(
-            params.input_mode.to_string(),
-        ));
+        if matches!(params.input_mode, InputMode::T3ster) {
+            return Err(PyrthError::UnsupportedInputMode(
+                params.input_mode.to_string(),
+            ));
+        }
     }
     if !params.only_make_z && input.time.len() < 2 {
         return Err(PyrthError::InvalidParameter {
@@ -74,7 +76,7 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
         });
     }
 
-    let impedance = make_impedance_data(input)?;
+    let impedance = make_impedance_data(input, params)?;
     if params.only_make_z {
         return Ok(EvaluationResult {
             impedance,

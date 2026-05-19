@@ -14,6 +14,7 @@ import pyrth_py
 
 
 DATA = [(1e-6, 0.1), (1e-5, 0.2), (1e-4, 0.3)]
+TEMP_DATA = [(1.0, 20.0), (2.0, 19.0), (3.0, 18.0)]
 
 
 def assert_impedance_only(result: dict) -> None:
@@ -30,6 +31,16 @@ def main() -> None:
     evaluation = pyrth_py.Evaluation()
     module = evaluation.standard_module({"data": DATA, "only_make_z": True})
     assert_impedance_only(module)
+
+    temp_module = evaluation.standard_module(
+        {
+            "data": TEMP_DATA,
+            "input_mode": "temp",
+            "only_make_z": True,
+            "power_step": 2.0,
+        }
+    )
+    assert temp_module["impedance"] == [0.0, 0.5, 1.0]
 
     try:
         evaluation.standard_module(

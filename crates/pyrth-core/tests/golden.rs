@@ -99,6 +99,7 @@ fn params_from_fixture(fixture: &GoldenFixture) -> EvaluationParams {
         blockwise_sum_width: params.blockwise_sum_width,
         calc_struc: true,
         only_make_z: false,
+        ..EvaluationParams::default()
     }
 }
 
@@ -218,6 +219,45 @@ fn invalid_evaluation_params_return_errors() {
             ..
         }
     ));
+}
+
+#[test]
+fn temperature_input_converts_to_impedance() {
+    let input = TransientInput::from_pairs([(1.0, 20.0), (2.0, 19.0), (3.0, 18.0)]).unwrap();
+    let mut params = EvaluationParams::default();
+    params.input_mode = InputMode::Temperature;
+    params.only_make_z = true;
+    params.power_step = 2.0;
+    params.temp_0_avg_range = (0, 1);
+
+    let result = evaluate(input, &params).unwrap();
+
+    assert_array_close("temperature:time", &result.impedance.time, &[1.0, 2.0, 3.0]);
+    assert_array_close(
+        "temperature:impedance",
+        &result.impedance.impedance,
+        &[0.0, 0.5, 1.0],
+    );
+}
+
+#[test]
+fn voltage_input_uses_calibration() {
+    let input = TransientInput::from_pairs([(1.0, 0.5), (2.0, 0.4), (3.0, 0.3)]).unwrap();
+    let mut params = EvaluationParams::default();
+    params.input_mode = InputMode::Voltage;
+    params.only_make_z = true;
+    params.kfac_fit_deg = 1;
+    params.calibration = Some(vec![[20.0, 0.5], [30.0, 0.4], [40.0, 0.3]]);
+    params.temp_0_avg_range = (0, 1);
+
+    let result = evaluate(input, &params).unwrap();
+
+    assert_array_close("voltage:time", &result.impedance.time, &[1.0, 2.0, 3.0]);
+    assert_array_close(
+        "voltage:impedance",
+        &result.impedance.impedance,
+        &[0.0, -10.0, -20.0],
+    );
 }
 
 #[test]
