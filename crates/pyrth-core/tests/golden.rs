@@ -3,8 +3,8 @@ use std::{fs, path::PathBuf};
 use approx::{assert_relative_eq, relative_eq};
 use ndarray::Array1;
 use pyrth_core::{
-    cauer_from_foster_lanczos, evaluate, export_csv, DeconvMode, EvaluationParams, FourierFilter,
-    InputMode, PyrthError, StructureMethod, TransientInput,
+    cauer_from_foster_lanczos, evaluate, export_csv, export_svg_figures, DeconvMode,
+    EvaluationParams, FourierFilter, InputMode, PyrthError, StructureMethod, TransientInput,
 };
 use serde::Deserialize;
 
@@ -504,6 +504,36 @@ fn csv_export_writes_available_pipeline_outputs() {
         .unwrap()
         .to_string();
     assert_eq!(header, "time,impedance");
+}
+
+#[test]
+fn svg_export_writes_available_pipeline_figures() {
+    let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
+    let mut params = params_from_fixture(&fixture);
+    params.only_make_z = true;
+    let (_, result) = evaluate_fixture_with_params(fixture, params);
+
+    let output_dir = std::env::temp_dir().join(format!(
+        "pyrth_core_only_make_z_svg_export_{}",
+        std::process::id()
+    ));
+    if output_dir.exists() {
+        fs::remove_dir_all(&output_dir).unwrap();
+    }
+
+    let files = export_svg_figures(&result, &output_dir).unwrap();
+
+    assert!(files.impedance.exists());
+    assert!(files.imp_deriv.is_none());
+    assert!(files.time_spec.is_none());
+    assert!(files.foster.is_none());
+    assert!(files.cauer.is_none());
+    assert!(files.diff_struc.is_none());
+
+    let svg = fs::read_to_string(files.impedance).unwrap();
+    assert!(svg.starts_with("<svg "));
+    assert!(svg.contains("<polyline"));
+    assert!(svg.contains("Thermal impedance"));
 }
 
 #[test]
