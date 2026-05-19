@@ -80,6 +80,26 @@ def main() -> None:
     assert len(lasso_module["time_spec"]) == 4
     assert all(math.isfinite(value) for value in lasso_module["time_spec"])
 
+    theoretical = pyrth_py.theoretical_impedance([1.0, 2.0], [0.5, 1.5], 1e-6, 1e-2, 8)
+    assert sorted(theoretical) == ["impedance", "time"]
+    assert len(theoretical["time"]) == 8
+    assert all(math.isfinite(value) for value in theoretical["impedance"])
+
+    bootstrap = pyrth_py.bootstrap_theoretical(
+        [1.0, 2.0],
+        [0.5, 1.5],
+        1e-6,
+        1e-1,
+        80,
+        2,
+        0.0,
+        seed=7,
+    )
+    assert bootstrap["successful_repetitions"] == 2
+    assert len(bootstrap["impedance_mean"]) == 80
+    assert len(bootstrap["time_spectrum_mean"]) > 0
+    assert all(math.isfinite(value) for value in bootstrap["time_spectrum_mean"])
+
     temp_module = evaluation.standard_module(
         {
             "data": TEMP_DATA,

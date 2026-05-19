@@ -24,12 +24,14 @@ implementation remains the reference implementation.
   - Fourier deconvolution with `hann`, `rectangular`, `gauss`, `fermi`,
     `nuttall`, `blackman_nuttall`, and `blackman_harris` filters
   - Lasso deconvolution with deterministic non-negative coordinate descent
+  - Adaptive deconvolution as deterministic scaled-alpha sparse Lasso
   - Foster network conversion
   - Lanczos Cauer conversion
 - Theoretical helpers:
   - Foster RC arrays to theoretical impedance input
   - validated Foster RC optimization helper parameters, flattening, bounds
     checks, and impedance residual norms
+  - deterministic bounded coordinate-search solver for Foster RC parameters
   - standard temperature prediction by interpolating power and impulse response
   - comparison metrics for two evaluated results
   - deterministic bootstrap means from theoretical RC models
@@ -79,6 +81,10 @@ implementation remains the reference implementation.
   - `--t3ster-calibration`
 - Minimal PyO3 entrypoint:
   - `evaluate_impedance(data, only_make_z=False, calc_struc=True)`
+  - `theoretical_impedance(resistance, capacitance, time_start, time_end,
+    time_size)`
+  - `bootstrap_theoretical(resistance, capacitance, time_start, time_end,
+    time_size, repetitions, noise_std, seed=0)`
   - `Evaluation().standard_module({"data": ...})`
   - `Evaluation().standard_module({...})` with `input_mode="t3ster"` and
     `infile`/`infile_pwr`/`infile_tco` or `input`/`t3ster_power`/
@@ -104,11 +110,12 @@ Strict golden comparisons currently cover:
 - Bayesian `time_spec` for MOSFET TIM and MOSFET dry
 - Foster network resistance/capacitance for MOSFET TIM and MOSFET dry
 - Lasso smoke coverage for finite, non-negative sparse spectrum
+- Adaptive smoke coverage for finite, non-negative sparse spectrum
 - theoretical single/multiple RC impedance generation
 - standard temperature prediction finite output
 - comparison metric behavior for spectra, structure functions, and resistance
 - optimization helper validation, flatten/unflatten, bounds, and theoretical
-  impedance residuals
+  impedance residuals, including bounded coordinate-search improvement checks
 - deterministic theoretical bootstrap means
 
 Lanczos Cauer coverage currently checks:
@@ -128,10 +135,13 @@ Lanczos Cauer coverage currently checks:
   selection in a few positions.
 - PyO3 returns plain Python dictionaries rather than existing Python
   `StructureFunction` objects.
-- Adaptive deconvolution now returns an explicit unsupported error instead of
-  falling back to Bayesian.
-- Adaptive deconvolution, MPFR structure methods, and the full optimization
-  solver are not ported.
+- Adaptive deconvolution is a minimal deterministic sparse implementation, not
+  full Python adaptive parity.
+- MPFR structure methods and full Python optimization parity are not ported.
+  Rust now has a small f64 Foster rational assembly and poly-long helper under
+  `network` for follow-on MPFR work, but `evaluate` still reports `sobhy`,
+  `khatwani`, `boor_golub`, and `polylong` as unsupported rather than
+  presenting finite-precision scaffolding as Python MPFR parity.
 - Bootstrap and comparison currently cover core numerical helpers only; the
   wider Python module orchestration and exporter parity are not ported.
 - Temperature prediction currently supports standard-evaluation impulse

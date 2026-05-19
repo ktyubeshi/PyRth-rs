@@ -131,7 +131,11 @@ fn dot_c(vector: &[f64], c_diag: &[f64]) -> f64 {
         .sum()
 }
 
-fn reduceat_blocks(resistance: &[f64], capacitance: &[f64], width: usize) -> (Vec<f64>, Vec<f64>) {
+pub(crate) fn reduceat_blocks(
+    resistance: &[f64],
+    capacitance: &[f64],
+    width: usize,
+) -> (Vec<f64>, Vec<f64>) {
     let block_count = resistance.len() / width;
     let mut block_resistance = Vec::with_capacity(block_count);
     let mut block_capacitance = Vec::with_capacity(block_count);
@@ -150,7 +154,7 @@ fn reduceat_blocks(resistance: &[f64], capacitance: &[f64], width: usize) -> (Ve
     (block_resistance, block_capacitance)
 }
 
-fn cumulative_sum(values: &[f64]) -> Vec<f64> {
+pub(crate) fn cumulative_sum(values: &[f64]) -> Vec<f64> {
     let mut total = 0.0;
     values
         .iter()
@@ -161,7 +165,7 @@ fn cumulative_sum(values: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-fn differential_structure(resistance: &[f64], capacitance: &[f64]) -> Vec<f64> {
+pub(crate) fn differential_structure(resistance: &[f64], capacitance: &[f64]) -> Vec<f64> {
     resistance
         .windows(2)
         .zip(capacitance.windows(2))

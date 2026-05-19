@@ -160,6 +160,27 @@ Goal:
 - Re-run the existing evaluation pipeline and average successful impedance and
   time-spectrum outputs.
 
+### I. MPFR Structure Methods
+
+Status: design investigated; minimal f64 rational/poly-long scaffolding added
+under `crates/pyrth-core/src/network` without wiring it into `evaluate`.
+
+Owned paths:
+
+- `crates/pyrth-core/src/network/*`
+- `crates/pyrth-core/src/evaluation.rs` structure-method branch only
+- `crates/pyrth-core/tests/structure_methods.rs`
+- `docs/rust-port/status.md`
+- `docs/rust-port/parallel-plan.md`
+
+Goal:
+
+- Port Python `transient_mpfr_utils.py` methods (`polylong`, `sobhy`,
+  `khatwani`, `boor_golub`) without mislabeling Lanczos or f64 scaffolding as
+  MPFR-equivalent output.
+- Decide separately whether to add `rug`/`gmp-mpfr-sys`, a feature-gated MPFR
+  implementation, or a documented finite-precision mode.
+
 ## Landing Rules
 
 - Do not edit another slice's owned paths unless explicitly coordinating.

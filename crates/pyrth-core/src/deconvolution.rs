@@ -135,12 +135,28 @@ pub fn time_spectrum_lasso(
     derivative: &DerivativeResult,
     params: &EvaluationParams,
 ) -> Array1<f64> {
+    time_spectrum_lasso_with_alpha(derivative, params, params.lasso_alpha)
+}
+
+pub fn time_spectrum_adaptive(
+    derivative: &DerivativeResult,
+    params: &EvaluationParams,
+) -> Array1<f64> {
+    let alpha = adaptive_lasso_alpha(&derivative.imp_deriv_interp, params.lasso_alpha);
+    time_spectrum_lasso_with_alpha(derivative, params, alpha)
+}
+
+fn time_spectrum_lasso_with_alpha(
+    derivative: &DerivativeResult,
+    params: &EvaluationParams,
+    alpha: f64,
+) -> Array1<f64> {
     let design = response_matrix(&derivative.log_time_pad);
     let (normalized_design, column_norms) = normalize_columns(&design);
     let normalized_coefficients = nonnegative_lasso_coordinate_descent(
         &normalized_design,
         &derivative.imp_deriv_interp,
-        params.lasso_alpha,
+        alpha,
         params.lasso_max_iter,
         params.lasso_tol,
     );
@@ -151,6 +167,37 @@ pub fn time_spectrum_lasso(
             .zip(column_norms.iter())
             .map(|(coefficient, norm)| coefficient / norm),
     ) * derivative.log_time_delta
+}
+
+fn adaptive_lasso_alpha(derivative: &Array1<f64>, base_alpha: f64) -> f64 {
+    if base_alpha == 0.0 {
+        return 0.0;
+    }
+
+    let mut count = 0usize;
+    let mut abs_sum = 0.0;
+    let mut square_sum = 0.0;
+    for value in derivative.iter().copied().filter(|value| value.is_finite()) {
+        count += 1;
+        abs_sum += value.abs();
+        square_sum += value * value;
+    }
+
+    if count == 0 {
+        return base_alpha;
+    }
+
+    let mean_abs = abs_sum / count as f64;
+    let rms = (square_sum / count as f64).sqrt();
+    let derivative_scale = rms.max(mean_abs).max(f64::EPSILON);
+    let shape_factor = (rms / mean_abs.max(f64::EPSILON)).clamp(0.5, 2.0);
+
+    let adjusted_alpha = base_alpha * derivative_scale * shape_factor;
+    if adjusted_alpha.is_finite() {
+        adjusted_alpha
+    } else {
+        base_alpha
+    }
 }
 
 fn normalize_columns(design: &Array2<f64>) -> (Array2<f64>, Array1<f64>) {

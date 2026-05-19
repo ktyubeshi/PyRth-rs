@@ -153,6 +153,170 @@ impl RcParameterBounds {
             && all_le(&self.lower.capacitance, &parameters.capacitance)
             && all_le(&parameters.capacitance, &self.upper.capacitance))
     }
+
+    pub fn clamp(&self, parameters: &RcParameters) -> Result<RcParameters> {
+        self.lower.validate()?;
+        self.upper.validate()?;
+        validate_same_len(self.lower.len(), self.upper.len(), "bounds")?;
+        validate_same_len(
+            parameters.resistance.len(),
+            parameters.capacitance.len(),
+            "capacitance",
+        )?;
+        validate_same_len(self.lower.len(), parameters.len(), "parameters")?;
+        validate_finite(&parameters.resistance, "resistance")?;
+        validate_finite(&parameters.capacitance, "capacitance")?;
+
+        Ok(RcParameters {
+            resistance: clamp_array(
+                &parameters.resistance,
+                &self.lower.resistance,
+                &self.upper.resistance,
+            ),
+            capacitance: clamp_array(
+                &parameters.capacitance,
+                &self.lower.capacitance,
+                &self.upper.capacitance,
+            ),
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OptimizationConfig {
+    pub max_iter: usize,
+    pub initial_step: f64,
+    pub min_step: f64,
+    pub shrink_factor: f64,
+}
+
+impl Default for OptimizationConfig {
+    fn default() -> Self {
+        Self {
+            max_iter: 128,
+            initial_step: 0.1,
+            min_step: 1e-6,
+            shrink_factor: 0.5,
+        }
+    }
+}
+
+impl OptimizationConfig {
+    pub fn validate(&self) -> Result<()> {
+        if self.max_iter == 0 {
+            return Err(PyrthError::InvalidParameter {
+                parameter: "max_iter",
+                expected: "greater than 0",
+                actual: self.max_iter.to_string(),
+            });
+        }
+        if !self.initial_step.is_finite() || self.initial_step <= 0.0 {
+            return Err(PyrthError::InvalidParameter {
+                parameter: "initial_step",
+                expected: "finite and positive",
+                actual: self.initial_step.to_string(),
+            });
+        }
+        if !self.min_step.is_finite() || self.min_step <= 0.0 {
+            return Err(PyrthError::InvalidParameter {
+                parameter: "min_step",
+                expected: "finite and positive",
+                actual: self.min_step.to_string(),
+            });
+        }
+        if self.min_step > self.initial_step {
+            return Err(PyrthError::InvalidParameter {
+                parameter: "min_step",
+                expected: "less than or equal to initial_step",
+                actual: self.min_step.to_string(),
+            });
+        }
+        if !self.shrink_factor.is_finite() || self.shrink_factor <= 0.0 || self.shrink_factor >= 1.0
+        {
+            return Err(PyrthError::InvalidParameter {
+                parameter: "shrink_factor",
+                expected: "finite and in the open interval (0, 1)",
+                actual: self.shrink_factor.to_string(),
+            });
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct OptimizationResult {
+    pub parameters: RcParameters,
+    pub residual_norm: f64,
+    pub iterations: usize,
+}
+
+pub fn optimize_rc_parameters(
+    input: &TransientInput,
+    initial: &RcParameters,
+    bounds: &RcParameterBounds,
+    config: OptimizationConfig,
+) -> Result<OptimizationResult> {
+    input.validate()?;
+    initial.validate()?;
+    bounds.lower.validate()?;
+    bounds.upper.validate()?;
+    validate_same_len(initial.len(), bounds.lower.len(), "bounds")?;
+    validate_same_len(bounds.lower.len(), bounds.upper.len(), "bounds")?;
+    config.validate()?;
+
+    let mut current = bounds.clamp(initial)?;
+    let mut current_residual = residual_for_parameters(input, &current)?;
+    let mut step = config.initial_step;
+    let mut iterations = 0;
+
+    while iterations < config.max_iter && step >= config.min_step {
+        iterations += 1;
+        let mut improved = false;
+
+        for index in 0..current.len() {
+            for direction in [1.0, -1.0] {
+                let mut candidate = current.clone();
+                candidate.resistance[index] += direction * step;
+                candidate = bounds.clamp(&candidate)?;
+                if candidate == current {
+                    continue;
+                }
+
+                let candidate_residual = residual_for_parameters(input, &candidate)?;
+                if candidate_residual < current_residual {
+                    current = candidate;
+                    current_residual = candidate_residual;
+                    improved = true;
+                }
+            }
+
+            for direction in [1.0, -1.0] {
+                let mut candidate = current.clone();
+                candidate.capacitance[index] += direction * step;
+                candidate = bounds.clamp(&candidate)?;
+                if candidate == current {
+                    continue;
+                }
+
+                let candidate_residual = residual_for_parameters(input, &candidate)?;
+                if candidate_residual < current_residual {
+                    current = candidate;
+                    current_residual = candidate_residual;
+                    improved = true;
+                }
+            }
+        }
+
+        if !improved {
+            step *= config.shrink_factor;
+        }
+    }
+
+    Ok(OptimizationResult {
+        parameters: current,
+        residual_norm: current_residual,
+        iterations,
+    })
 }
 
 pub fn relative_l2_norm(reference: &Array1<f64>, candidate: &Array1<f64>) -> Result<f64> {
@@ -229,6 +393,18 @@ fn validate_positive_finite(values: &Array1<f64>, parameter: &'static str) -> Re
     })
 }
 
+fn validate_finite(values: &Array1<f64>, parameter: &'static str) -> Result<()> {
+    if values.iter().all(|value| value.is_finite()) {
+        return Ok(());
+    }
+
+    Err(PyrthError::InvalidParameter {
+        parameter,
+        expected: "finite",
+        actual: format!("{values:?}"),
+    })
+}
+
 fn validate_same_len(left_len: usize, right_len: usize, parameter: &'static str) -> Result<()> {
     if left_len == right_len {
         return Ok(());
@@ -245,4 +421,16 @@ fn all_le(left: &Array1<f64>, right: &Array1<f64>) -> bool {
     Zip::from(left)
         .and(right)
         .all(|left_value, right_value| left_value <= right_value)
+}
+
+fn clamp_array(values: &Array1<f64>, lower: &Array1<f64>, upper: &Array1<f64>) -> Array1<f64> {
+    Zip::from(values)
+        .and(lower)
+        .and(upper)
+        .map_collect(|value, lower_value, upper_value| value.clamp(*lower_value, *upper_value))
+}
+
+fn residual_for_parameters(input: &TransientInput, parameters: &RcParameters) -> Result<f64> {
+    let model = parameters.to_theoretical_model()?;
+    impedance_residual_norm(input, &model)
 }

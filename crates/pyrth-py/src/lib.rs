@@ -230,6 +230,63 @@ fn evaluate_impedance(
     )
 }
 
+#[pyfunction]
+fn theoretical_impedance(
+    py: Python<'_>,
+    resistance: Vec<f64>,
+    capacitance: Vec<f64>,
+    time_start: f64,
+    time_end: f64,
+    time_size: usize,
+) -> PyResult<PyObject> {
+    let model = pyrth_core::TheoreticalModel::from_slices(&resistance, &capacitance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let input = model
+        .to_transient_input(time_start, time_end, time_size)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let output = PyDict::new(py);
+    output.set_item("time", input.time.to_vec())?;
+    output.set_item("impedance", input.value.to_vec())?;
+    Ok(output.into())
+}
+
+#[pyfunction]
+#[pyo3(signature = (resistance, capacitance, time_start, time_end, time_size, repetitions, noise_std, seed=0))]
+fn bootstrap_theoretical(
+    py: Python<'_>,
+    resistance: Vec<f64>,
+    capacitance: Vec<f64>,
+    time_start: f64,
+    time_end: f64,
+    time_size: usize,
+    repetitions: usize,
+    noise_std: f64,
+    seed: u64,
+) -> PyResult<PyObject> {
+    let model = pyrth_core::TheoreticalModel::from_slices(&resistance, &capacitance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let mut params = pyrth_core::EvaluationParams::default();
+    params.calc_struc = false;
+    let result = pyrth_core::bootstrap_from_theoretical(
+        &model,
+        time_start,
+        time_end,
+        time_size,
+        repetitions,
+        noise_std,
+        &params,
+        seed,
+    )
+    .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let output = PyDict::new(py);
+    output.set_item("impedance_mean", result.impedance_mean.to_vec())?;
+    output.set_item("time_spectrum_mean", result.time_spectrum_mean.to_vec())?;
+    output.set_item("successful_repetitions", result.successful_repetitions)?;
+    Ok(output.into())
+}
+
 struct EvalOverrides {
     input_mode: Option<String>,
     deconv_mode: Option<String>,
@@ -452,6 +509,8 @@ fn evaluate_impedance_with_input(
 fn pyrth_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Evaluation>()?;
     m.add_function(wrap_pyfunction!(evaluate_impedance, m)?)?;
+    m.add_function(wrap_pyfunction!(theoretical_impedance, m)?)?;
+    m.add_function(wrap_pyfunction!(bootstrap_theoretical, m)?)?;
     Ok(())
 }
 

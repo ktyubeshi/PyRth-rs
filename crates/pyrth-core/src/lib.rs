@@ -33,7 +33,8 @@ pub use evaluation::{evaluate, CauerNetwork, DerivativeResult, EvaluationResult,
 pub use export::{export_csv, ExportedCsvFiles};
 pub use network::{cauer_from_foster_lanczos, foster_from_time_spectrum};
 pub use optimization::{
-    impedance_residual_norm, relative_l2_norm, RcParameterBounds, RcParameters,
+    impedance_residual_norm, optimize_rc_parameters, relative_l2_norm, OptimizationConfig,
+    OptimizationResult, RcParameterBounds, RcParameters,
 };
 pub use prediction::{predict_temperature, TemperaturePredictionResult};
 pub use preprocess::make_impedance_data;

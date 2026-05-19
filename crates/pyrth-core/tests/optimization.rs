@@ -1,8 +1,9 @@
 use approx::assert_relative_eq;
 use ndarray::array;
 use pyrth_core::{
-    impedance_residual_norm, relative_l2_norm, EvaluationResult, FosterNetwork, ImpedanceData,
-    PyrthError, RcParameterBounds, RcParameters, TheoreticalModel,
+    impedance_residual_norm, optimize_rc_parameters, relative_l2_norm, EvaluationResult,
+    FosterNetwork, ImpedanceData, OptimizationConfig, PyrthError, RcParameterBounds, RcParameters,
+    TheoreticalModel,
 };
 
 fn foster_result(resistance: Vec<f64>, capacitance: Vec<f64>) -> EvaluationResult {
@@ -105,4 +106,97 @@ fn impedance_residual_is_zero_for_matching_theoretical_model() {
     let residual = impedance_residual_norm(&input, &model).unwrap();
 
     assert_relative_eq!(residual, 0.0, epsilon = 1e-14);
+}
+
+#[test]
+fn optimize_rc_parameters_improves_shifted_initial_guess() {
+    let model = TheoreticalModel::from_slices(&[1.0, 3.0], &[0.4, 2.0]).unwrap();
+    let input = model.to_transient_input(1e-3, 1e2, 48).unwrap();
+    let initial = RcParameters::from_slices(&[0.75, 3.5], &[0.65, 1.5]).unwrap();
+    let lower = RcParameters::from_slices(&[0.5, 2.0], &[0.2, 1.0]).unwrap();
+    let upper = RcParameters::from_slices(&[1.5, 4.0], &[1.0, 3.0]).unwrap();
+    let bounds = RcParameterBounds::new(lower, upper).unwrap();
+    let config = OptimizationConfig {
+        max_iter: 64,
+        initial_step: 0.25,
+        min_step: 1e-4,
+        shrink_factor: 0.5,
+    };
+    let initial_residual =
+        impedance_residual_norm(&input, &initial.to_theoretical_model().unwrap()).unwrap();
+
+    let result = optimize_rc_parameters(&input, &initial, &bounds, config).unwrap();
+
+    assert!(result.residual_norm < initial_residual);
+    assert!(result.iterations > 0);
+}
+
+#[test]
+fn optimize_rc_parameters_clamps_result_to_bounds() {
+    let model = TheoreticalModel::from_slices(&[1.0, 3.0], &[0.4, 2.0]).unwrap();
+    let input = model.to_transient_input(1e-3, 1e2, 32).unwrap();
+    let initial = RcParameters::from_slices(&[0.1, 10.0], &[0.1, 10.0]).unwrap();
+    let lower = RcParameters::from_slices(&[0.5, 2.0], &[0.2, 1.0]).unwrap();
+    let upper = RcParameters::from_slices(&[1.5, 4.0], &[1.0, 3.0]).unwrap();
+    let bounds = RcParameterBounds::new(lower, upper).unwrap();
+
+    let result = optimize_rc_parameters(
+        &input,
+        &initial,
+        &bounds,
+        OptimizationConfig {
+            max_iter: 8,
+            initial_step: 0.5,
+            min_step: 0.01,
+            shrink_factor: 0.5,
+        },
+    )
+    .unwrap();
+
+    assert!(bounds.contains(&result.parameters).unwrap());
+}
+
+#[test]
+fn optimize_rc_parameters_rejects_invalid_config() {
+    let model = TheoreticalModel::from_slices(&[1.0], &[0.4]).unwrap();
+    let input = model.to_transient_input(1e-3, 1e1, 16).unwrap();
+    let initial = RcParameters::from_slices(&[1.0], &[0.4]).unwrap();
+    let lower = RcParameters::from_slices(&[0.5], &[0.2]).unwrap();
+    let upper = RcParameters::from_slices(&[1.5], &[1.0]).unwrap();
+    let bounds = RcParameterBounds::new(lower, upper).unwrap();
+
+    assert!(matches!(
+        optimize_rc_parameters(
+            &input,
+            &initial,
+            &bounds,
+            OptimizationConfig {
+                max_iter: 0,
+                initial_step: 0.1,
+                min_step: 0.01,
+                shrink_factor: 0.5,
+            },
+        ),
+        Err(PyrthError::InvalidParameter {
+            parameter: "max_iter",
+            ..
+        })
+    ));
+    assert!(matches!(
+        optimize_rc_parameters(
+            &input,
+            &initial,
+            &bounds,
+            OptimizationConfig {
+                max_iter: 8,
+                initial_step: 0.1,
+                min_step: 0.01,
+                shrink_factor: 1.0,
+            },
+        ),
+        Err(PyrthError::InvalidParameter {
+            parameter: "shrink_factor",
+            ..
+        })
+    ));
 }
