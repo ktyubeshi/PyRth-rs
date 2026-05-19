@@ -1,5 +1,7 @@
 //! Python extension crate for the PyRth Rust port.
 
+use std::fs;
+
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 pub use pyrth_core::*;
 
@@ -18,14 +20,6 @@ impl Evaluation {
         py: Python<'_>,
         parameters: &Bound<'_, PyDict>,
     ) -> PyResult<PyObject> {
-        let data = parameters
-            .get_item("data")?
-            .ok_or_else(|| PyValueError::new_err("data must be provided"))?
-            .extract::<Vec<(f64, f64)>>()
-            .map_err(|err| {
-                PyValueError::new_err(format!("data must be a sequence of pairs: {err}"))
-            })?;
-
         let only_make_z = extract_bool(parameters, "only_make_z")?.unwrap_or(false);
         let calc_struc = extract_bool(parameters, "calc_struc")?.unwrap_or(true);
         let input_mode = extract_string(parameters, "input_mode")?;
@@ -51,35 +45,108 @@ impl Evaluation {
         let lower_fit_limit = extract_f64(parameters, "lower_fit_limit")?;
         let upper_fit_limit = extract_f64(parameters, "upper_fit_limit")?;
 
-        evaluate_impedance_with_params(
-            py,
-            data,
-            EvalOverrides {
-                input_mode,
-                deconv_mode,
-                filter_name,
-                filter_range,
-                filter_parameter,
-                only_make_z,
-                calc_struc,
-                log_time_size,
-                bay_steps,
-                blockwise_sum_width,
-                power_step,
-                power_scale_factor,
-                optical_power,
-                is_heating,
-                kfac_fit_deg,
-                calibration,
-                data_cut_lower,
-                data_cut_upper,
-                temp_0_avg_range,
-                extrapolate,
-                lower_fit_limit,
-                upper_fit_limit,
-            },
-        )
+        let mut overrides = EvalOverrides {
+            input_mode,
+            deconv_mode,
+            filter_name,
+            filter_range,
+            filter_parameter,
+            only_make_z,
+            calc_struc,
+            log_time_size,
+            bay_steps,
+            blockwise_sum_width,
+            power_step,
+            power_scale_factor,
+            optical_power,
+            is_heating,
+            kfac_fit_deg,
+            calibration,
+            data_cut_lower,
+            data_cut_upper,
+            temp_0_avg_range,
+            extrapolate,
+            lower_fit_limit,
+            upper_fit_limit,
+        };
+        let input = extract_transient_input(parameters, &mut overrides)?;
+
+        evaluate_transient_input_with_params(py, input, overrides)
     }
+}
+
+fn extract_transient_input(
+    parameters: &Bound<'_, PyDict>,
+    overrides: &mut EvalOverrides,
+) -> PyResult<pyrth_core::TransientInput> {
+    if let Some(data) = parameters.get_item("data")? {
+        let data = data.extract::<Vec<(f64, f64)>>().map_err(|err| {
+            PyValueError::new_err(format!("data must be a sequence of pairs: {err}"))
+        })?;
+        return pyrth_core::TransientInput::from_pairs(data)
+            .map_err(|err| PyValueError::new_err(err.to_string()));
+    }
+
+    if !matches!(
+        overrides.input_mode.as_deref(),
+        Some(mode) if mode.eq_ignore_ascii_case("t3ster")
+    ) {
+        return Err(PyValueError::new_err(
+            "data must be provided unless input_mode is 't3ster' with file paths",
+        ));
+    }
+
+    let raw_path = extract_first_string(parameters, &["infile", "input"])?
+        .ok_or_else(|| PyValueError::new_err("input_mode='t3ster' requires infile or input"))?;
+    let calibration_path = extract_first_string(parameters, &["infile_tco", "t3ster_calibration"])?
+        .ok_or_else(|| {
+            PyValueError::new_err("input_mode='t3ster' requires infile_tco or t3ster_calibration")
+        })?;
+    let power_path = extract_first_string(parameters, &["infile_pwr", "t3ster_power"])?;
+
+    let raw_text = fs::read_to_string(&raw_path).map_err(|err| {
+        PyValueError::new_err(format!("failed to read T3Ster raw file {raw_path}: {err}"))
+    })?;
+    let calibration_text = fs::read_to_string(&calibration_path).map_err(|err| {
+        PyValueError::new_err(format!(
+            "failed to read T3Ster calibration file {calibration_path}: {err}"
+        ))
+    })?;
+    let raw = pyrth_core::parse_t3ster_raw_text(&raw_text)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let calibration = pyrth_core::parse_t3ster_calibration_text(&calibration_text)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    if let Some(power_path) = power_path {
+        let power_text = fs::read_to_string(&power_path).map_err(|err| {
+            PyValueError::new_err(format!(
+                "failed to read T3Ster power file {power_path}: {err}"
+            ))
+        })?;
+        overrides.power_step = Some(
+            pyrth_core::parse_t3ster_power_step(&power_text)
+                .map_err(|err| PyValueError::new_err(err.to_string()))?,
+        );
+    }
+
+    overrides.input_mode = Some("temp".to_string());
+    pyrth_core::t3ster_raw_to_temperature_input(
+        &raw,
+        &calibration,
+        overrides
+            .kfac_fit_deg
+            .unwrap_or_else(|| pyrth_core::EvaluationParams::default().kfac_fit_deg),
+    )
+    .map_err(|err| PyValueError::new_err(err.to_string()))
+}
+
+fn extract_first_string(parameters: &Bound<'_, PyDict>, keys: &[&str]) -> PyResult<Option<String>> {
+    for key in keys {
+        if let Some(value) = extract_string(parameters, key)? {
+            return Ok(Some(value));
+        }
+    }
+    Ok(None)
 }
 
 #[pyfunction]
@@ -153,6 +220,22 @@ fn evaluate_impedance_with_params(
     let input = pyrth_core::TransientInput::from_pairs(data)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
+    evaluate_impedance_with_input(py, input, overrides)
+}
+
+fn evaluate_transient_input_with_params(
+    py: Python<'_>,
+    input: pyrth_core::TransientInput,
+    overrides: EvalOverrides,
+) -> PyResult<PyObject> {
+    evaluate_impedance_with_input(py, input, overrides)
+}
+
+fn evaluate_impedance_with_input(
+    py: Python<'_>,
+    input: pyrth_core::TransientInput,
+    overrides: EvalOverrides,
+) -> PyResult<PyObject> {
     let mut params = pyrth_core::EvaluationParams::default();
     if let Some(input_mode) = overrides.input_mode {
         params.input_mode = pyrth_core::InputMode::from_label(&input_mode)

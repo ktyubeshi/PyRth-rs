@@ -9,10 +9,13 @@ Run after installing the extension into the active Python environment:
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import pyrth_py
 
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+T3STER_DIR = REPO_ROOT / "tests" / "data" / "t3ster"
 DATA = [(1e-6, 0.1), (1e-5, 0.2), (1e-4, 0.3)]
 TEMP_DATA = [(1.0, 20.0), (2.0, 19.0), (3.0, 18.0)]
 EXTRAP_TEMP_DATA = [(1.0, 12.0), (4.0, 14.0), (9.0, 16.0), (16.0, 18.0)]
@@ -78,6 +81,20 @@ def main() -> None:
         }
     )
     assert_close_list(volt_module["impedance"], [0.0, -10.0, -20.0])
+
+    t3ster_module = evaluation.standard_module(
+        {
+            "input_mode": "t3ster",
+            "input": str(T3STER_DIR / "T25_I-m5m-I-h600m_100s.raw"),
+            "t3ster_power": str(T3STER_DIR / "T25_I-m5m-I-h600m_100s.pwr"),
+            "t3ster_calibration": str(T3STER_DIR / "calib.tco"),
+            "only_make_z": True,
+        }
+    )
+    assert sorted(t3ster_module) == ["impedance", "log_time", "time"]
+    assert len(t3ster_module["time"]) > 100
+    assert t3ster_module["time"][0] == 1e-6
+    assert all(math.isfinite(value) for value in t3ster_module["impedance"])
 
     try:
         evaluation.standard_module(
