@@ -52,6 +52,13 @@ implementation remains the reference implementation.
   - `foster.csv`
   - `cauer.csv`
   - `diff_struc.csv`
+- Core SVG figure export:
+  - `impedance.svg`
+  - `imp_deriv.svg`
+  - `time_spec.svg`
+  - `foster.svg`
+  - `cauer.svg`
+  - `diff_struc.svg`
 - Evaluation gates:
   - `only_make_z`
   - `calc_struc`
@@ -114,9 +121,10 @@ implementation remains the reference implementation.
     `Evaluation().comparison(...)`
   - `Evaluation().module(label)` returns a registered `StructureFunction`
     object by label
-  - `Evaluation().save_as_csv(output_dir="output/csv")` and `save_all(...)`
-    export all registered standard-evaluation modules through the core CSV
-    exporter into per-label subdirectories
+  - `Evaluation().save_as_csv(output_dir="output/csv")`,
+    `save_figures(output_dir="output/figures")`, and `save_all(...)` export
+    all registered standard-evaluation modules through the core CSV/SVG
+    exporters into per-label subdirectories
   - `Evaluation().theoretical({...})`, `Evaluation().bootstrap({...})`,
     `Evaluation().optimization({...})`, and
     `Evaluation().temperature_prediction({...})` as dict-parameter facades
@@ -206,8 +214,9 @@ Lanczos Cauer coverage currently checks:
   deltas without changing production output.
 - PyO3 standard-evaluation methods now return minimal `StructureFunction`
   objects instead of plain dictionaries while preserving dict-like read access
-  for smoke-level compatibility.  Full Python object behavior, exporter hooks,
-  and figure export are still missing.
+  for smoke-level compatibility.  CSV and simple SVG figure export work through
+  registered modules.  Full Python object behavior and Matplotlib-style figure
+  parity are still missing.
 - Adaptive deconvolution is a minimal deterministic sparse implementation, not
   full Python adaptive parity.
 - MPFR structure methods and full Python optimization parity are only partly

@@ -151,6 +151,9 @@ Goal:
   and optimization sweeps over the current RC optimizer helper.
 - PyO3 `save_as_csv` exports every registered standard-evaluation module into
   per-label output directories.
+- PyO3 `save_figures` exports simple SVG figures for every registered
+  standard-evaluation module into per-label output directories, and `save_all`
+  now returns both CSV and figure path dictionaries.
 - PyO3 standard-evaluation methods now return minimal `StructureFunction`
   objects with dict-like read access rather than bare dictionaries.
 
