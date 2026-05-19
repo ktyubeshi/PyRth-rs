@@ -142,6 +142,77 @@ fn impedance_and_derivative_match_python_golden() {
     }
 }
 
+#[test]
+#[ignore = "LED derivative parity is a known gap; run to inspect current deltas"]
+fn led_derivative_python_golden_diagnostic() {
+    let fixture_name = "led_bayesian_lanczos.json";
+    let (fixture, result) = evaluate_fixture(fixture_name);
+    let derivative = result.derivative.as_ref().unwrap();
+    let mut reports = Vec::new();
+
+    if !relative_eq!(
+        derivative.log_time_delta,
+        fixture.reference.log_time_delta,
+        epsilon = 1e-12,
+        max_relative = 1e-10
+    ) {
+        reports.push(format!(
+            "{fixture_name}:log_time_delta actual={} expected={}",
+            derivative.log_time_delta, fixture.reference.log_time_delta
+        ));
+    }
+
+    collect_array_mismatch_report(
+        &mut reports,
+        &format!("{fixture_name}:log_time_interp"),
+        &derivative.log_time_interp,
+        &fixture.reference.log_time_interp,
+        1e-12,
+        1e-10,
+    );
+    collect_array_mismatch_report(
+        &mut reports,
+        &format!("{fixture_name}:log_time_pad"),
+        &derivative.log_time_pad,
+        &fixture.reference.log_time_pad,
+        1e-12,
+        1e-10,
+    );
+    collect_array_mismatch_report(
+        &mut reports,
+        &format!("{fixture_name}:imp_smooth"),
+        &derivative.imp_smooth,
+        &fixture.reference.imp_smooth,
+        1e-12,
+        1e-10,
+    );
+    collect_array_mismatch_report(
+        &mut reports,
+        &format!("{fixture_name}:imp_smooth_full"),
+        &derivative.imp_smooth_full,
+        &fixture.reference.imp_smooth_full,
+        1e-12,
+        1e-10,
+    );
+    collect_array_mismatch_report(
+        &mut reports,
+        &format!("{fixture_name}:imp_deriv_interp"),
+        &derivative.imp_deriv_interp,
+        &fixture.reference.imp_deriv_interp,
+        1e-12,
+        1e-10,
+    );
+
+    if reports.is_empty() {
+        panic!("LED derivative now matches Python golden; move it into strict golden coverage");
+    }
+
+    panic!(
+        "LED derivative golden mismatch summary:\n{}",
+        reports.join("\n")
+    );
+}
+
 fn evaluate_fixture(fixture_name: &str) -> (GoldenFixture, pyrth_core::EvaluationResult) {
     let fixture = read_fixture(fixture_name);
     let params = params_from_fixture(&fixture);
@@ -435,6 +506,41 @@ fn csv_export_writes_available_pipeline_outputs() {
     assert_eq!(header, "time,impedance");
 }
 
+#[test]
+#[ignore = "diagnostic for unresolved Lanczos Cauer full-array golden drift"]
+fn diagnostic_lanczos_cauer_full_array_golden_equality() {
+    for fixture_name in [
+        "mosfet_tim_bayesian_lanczos.json",
+        "mosfet_dry_bayesian_lanczos.json",
+        "led_bayesian_lanczos.json",
+    ] {
+        let fixture = read_fixture(fixture_name);
+        let params = params_from_fixture(&fixture);
+        let cauer = cauer_from_foster_lanczos(
+            &Array1::from(fixture.reference.therm_capa_fost.clone()),
+            &Array1::from(fixture.reference.therm_resist_fost.clone()),
+            &params,
+        );
+
+        assert_full_cauer_diagnostic(
+            fixture_name,
+            "int_cau_res",
+            &cauer.cumulative_resistance,
+            &fixture.reference.int_cau_res,
+            1e-7,
+            1e-4,
+        );
+        assert_full_cauer_diagnostic(
+            fixture_name,
+            "int_cau_cap",
+            &cauer.cumulative_capacitance,
+            &fixture.reference.int_cau_cap,
+            1e-7,
+            1e-4,
+        );
+    }
+}
+
 fn assert_impedance_matches(
     fixture_name: &str,
     fixture: &GoldenFixture,
@@ -582,6 +688,61 @@ fn assert_array_close_with_tolerance(
     }
 }
 
+fn collect_array_mismatch_report(
+    reports: &mut Vec<String>,
+    name: &str,
+    actual: &Array1<f64>,
+    expected: &[f64],
+    epsilon: f64,
+    max_relative: f64,
+) {
+    if actual.len() != expected.len() {
+        reports.push(format!(
+            "{name} length mismatch: actual={} expected={}",
+            actual.len(),
+            expected.len()
+        ));
+        return;
+    }
+
+    let mut first_mismatch = None;
+    let mut max_abs = 0.0;
+    let mut max_abs_index = 0;
+    let mut max_rel = 0.0;
+    let mut max_rel_index = 0;
+
+    for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+        if !relative_eq!(
+            actual,
+            expected,
+            epsilon = epsilon,
+            max_relative = max_relative,
+        ) && first_mismatch.is_none()
+        {
+            first_mismatch = Some((index, *actual, *expected));
+        }
+
+        let abs_delta = (actual - expected).abs();
+        if abs_delta > max_abs {
+            max_abs = abs_delta;
+            max_abs_index = index;
+        }
+
+        let denominator = expected.abs().max(actual.abs()).max(f64::MIN_POSITIVE);
+        let rel_delta = abs_delta / denominator;
+        if rel_delta > max_rel {
+            max_rel = rel_delta;
+            max_rel_index = index;
+        }
+    }
+
+    if let Some((index, actual, expected)) = first_mismatch {
+        reports.push(format!(
+            "{name} first mismatch at [{index}]: actual={actual}, expected={expected}; max_abs={max_abs} at [{max_abs_index}], max_rel={max_rel} at [{max_rel_index}]"
+        ));
+    }
+}
+
 fn assert_prefix_close_with_tolerance(
     name: &str,
     actual: &Array1<f64>,
@@ -613,6 +774,72 @@ fn assert_prefix_close_with_tolerance(
             "mismatch in {name}[{index}]: actual={actual}, expected={expected}"
         );
     }
+}
+
+fn assert_full_cauer_diagnostic(
+    fixture_name: &str,
+    array_name: &str,
+    actual: &Array1<f64>,
+    expected: &[f64],
+    epsilon: f64,
+    max_relative: f64,
+) {
+    let actual_slice = actual.as_slice().unwrap();
+    let prefix_len = actual_slice.len().min(expected.len());
+    let first_mismatch = actual_slice
+        .iter()
+        .zip(expected)
+        .enumerate()
+        .find(|(_, (actual, expected))| {
+            !relative_eq!(
+                actual,
+                expected,
+                epsilon = epsilon,
+                max_relative = max_relative,
+            )
+        })
+        .map(|(index, (actual, expected))| (index, *actual, *expected));
+    let (max_abs_index, max_abs_diff) = max_abs_diff(actual_slice, expected);
+    let (max_rel_index, max_rel_diff) = max_rel_diff(actual_slice, expected);
+
+    assert!(
+        actual_slice.len() == expected.len() && first_mismatch.is_none(),
+        "{}:{} full-array mismatch: actual_len={}, expected_len={}, compared_prefix={}, \
+         first_mismatch={:?}, max_abs_diff=({},{:e}), max_rel_diff=({},{:e})",
+        fixture_name,
+        array_name,
+        actual_slice.len(),
+        expected.len(),
+        prefix_len,
+        first_mismatch,
+        max_abs_index,
+        max_abs_diff,
+        max_rel_index,
+        max_rel_diff
+    );
+}
+
+fn max_abs_diff(actual: &[f64], expected: &[f64]) -> (usize, f64) {
+    actual
+        .iter()
+        .zip(expected)
+        .enumerate()
+        .map(|(index, (actual, expected))| (index, (actual - expected).abs()))
+        .max_by(|(_, left), (_, right)| left.total_cmp(right))
+        .unwrap_or((0, 0.0))
+}
+
+fn max_rel_diff(actual: &[f64], expected: &[f64]) -> (usize, f64) {
+    actual
+        .iter()
+        .zip(expected)
+        .enumerate()
+        .map(|(index, (actual, expected))| {
+            let scale = expected.abs().max(f64::EPSILON);
+            (index, ((actual - expected) / scale).abs())
+        })
+        .max_by(|(_, left), (_, right)| left.total_cmp(right))
+        .unwrap_or((0, 0.0))
 }
 
 fn assert_cauer_is_physical(fixture_name: &str, cauer: &pyrth_core::CauerNetwork) {
