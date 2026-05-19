@@ -98,8 +98,10 @@ implementation remains the reference implementation.
   - `predict_temperature_response(...)` for explicit impulse responses,
     Foster RC arrays, or optimization result dicts plus power data
   - `Evaluation().standard_module({"data": ...})`
-  - `Evaluation().standard(...)` and `Evaluation().standard_module_set(...)`
-    as thin aliases over `standard_module`
+  - `Evaluation().standard(...)` as a thin alias over `standard_module`
+  - `Evaluation().standard_module_set(...)` as a standard-evaluation sweep
+    when `iterable_keywords` are provided, with the previous single-module
+    alias behavior preserved for simple parameter dictionaries
   - `Evaluation().module_labels()` and `Evaluation().module_count()` for the
     current minimal module registry, including duplicate-label suffixing
   - `Evaluation().save_as_csv(output_dir="output/csv")` and `save_all(...)`
@@ -189,8 +191,9 @@ Lanczos Cauer coverage currently checks:
   fit the current `CauerNetwork` contract.
 - Bootstrap and comparison currently cover core numerical helpers and thin
   `Evaluation` dict facades only.  They do not port Python's wider
-  `bootstrap_*`/`comparison_module` orchestration, iterable module-set handling,
-  result module registration, or exporter parity.
+  `bootstrap_*`/`comparison_module` orchestration or exporter parity.  Standard
+  module-set sweeps and result module registration are partially available in
+  PyO3.
 - Temperature prediction core and PyO3 helpers now support explicit impulse
   responses, Foster RC parameters, and optimization-result dictionaries, but
   the PyO3 `temperature_prediction` facade still does not run a full

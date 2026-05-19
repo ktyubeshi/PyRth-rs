@@ -144,6 +144,8 @@ Goal:
 - Compare evaluated spectra and structure functions with relative L2 norms.
 - Report total resistance differences using Cauer output when available and
   Foster output as a fallback.
+- The PyO3 `standard_module_set` facade now supports standard-evaluation
+  sweeps, which is the next building block for `comparison_module` parity.
 
 ### H. Theoretical Bootstrap
 
