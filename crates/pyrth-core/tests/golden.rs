@@ -3,8 +3,8 @@ use std::{fs, path::PathBuf};
 use approx::{assert_relative_eq, relative_eq};
 use ndarray::Array1;
 use pyrth_core::{
-    cauer_from_foster_lanczos, evaluate, DeconvMode, EvaluationParams, InputMode, StructureMethod,
-    TransientInput,
+    cauer_from_foster_lanczos, evaluate, export_csv, DeconvMode, EvaluationParams, InputMode,
+    StructureMethod, TransientInput,
 };
 use serde::Deserialize;
 
@@ -180,6 +180,39 @@ fn evaluation_flags_gate_pipeline_stages() {
     assert!(result.time_spectrum.is_some());
     assert!(result.foster.is_some());
     assert!(result.cauer.is_none());
+}
+
+#[test]
+fn csv_export_writes_available_pipeline_outputs() {
+    let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
+    let mut params = params_from_fixture(&fixture);
+    params.only_make_z = true;
+    let (_, result) = evaluate_fixture_with_params(fixture, params);
+
+    let output_dir = std::env::temp_dir().join(format!(
+        "pyrth_core_only_make_z_export_{}",
+        std::process::id()
+    ));
+    if output_dir.exists() {
+        fs::remove_dir_all(&output_dir).unwrap();
+    }
+
+    let files = export_csv(&result, &output_dir).unwrap();
+
+    assert!(files.impedance.exists());
+    assert!(files.imp_deriv.is_none());
+    assert!(files.time_spec.is_none());
+    assert!(files.foster.is_none());
+    assert!(files.cauer.is_none());
+    assert!(files.diff_struc.is_none());
+
+    let header = fs::read_to_string(files.impedance)
+        .unwrap()
+        .lines()
+        .next()
+        .unwrap()
+        .to_string();
+    assert_eq!(header, "time,impedance");
 }
 
 fn assert_impedance_matches(

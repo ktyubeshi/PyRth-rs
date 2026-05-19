@@ -1,12 +1,12 @@
 use std::{
     env,
     error::Error,
-    fs::{self, File},
-    io::{BufRead, BufReader, Write},
+    fs::File,
+    io::{BufRead, BufReader},
     path::{Path, PathBuf},
 };
 
-use pyrth_core::{evaluate, EvaluationParams, TransientInput};
+use pyrth_core::{evaluate, export_csv, EvaluationParams, TransientInput};
 
 fn main() {
     if let Err(err) = run() {
@@ -24,55 +24,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     params.calc_struc = !args.no_structure;
 
     let result = evaluate(input, &params)?;
-    fs::create_dir_all(&args.output_dir)?;
-
-    write_pairs(
-        &args.output_dir.join("impedance.csv"),
-        "time,impedance",
-        result.impedance.time.iter().copied(),
-        result.impedance.impedance.iter().copied(),
-    )?;
-
-    if let (Some(derivative), Some(time_spectrum)) =
-        (result.derivative.as_ref(), result.time_spectrum.as_ref())
-    {
-        write_pairs(
-            &args.output_dir.join("imp_deriv.csv"),
-            "time,imp_deriv",
-            derivative.log_time_pad.iter().map(|value| value.exp()),
-            derivative.imp_deriv_interp.iter().copied(),
-        )?;
-        write_pairs(
-            &args.output_dir.join("time_spec.csv"),
-            "time,time_spec",
-            derivative.log_time_pad.iter().map(|value| value.exp()),
-            time_spectrum.iter().copied(),
-        )?;
-    }
-
-    if let Some(foster) = result.foster.as_ref() {
-        write_pairs(
-            &args.output_dir.join("foster.csv"),
-            "resistance,capacitance",
-            foster.resistance.iter().copied(),
-            foster.capacitance.iter().copied(),
-        )?;
-    }
-
-    if let Some(cauer) = result.cauer.as_ref() {
-        write_pairs(
-            &args.output_dir.join("cauer.csv"),
-            "cumulative_resistance,cumulative_capacitance",
-            cauer.cumulative_resistance.iter().copied(),
-            cauer.cumulative_capacitance.iter().copied(),
-        )?;
-        write_pairs(
-            &args.output_dir.join("diff_struc.csv"),
-            "cumulative_resistance,differential_structure",
-            cauer.cumulative_resistance.iter().copied(),
-            cauer.differential_structure.iter().copied(),
-        )?;
-    }
+    export_csv(&result, &args.output_dir)?;
 
     Ok(())
 }
@@ -157,18 +109,4 @@ fn read_two_column_data(path: &Path) -> Result<TransientInput, Box<dyn Error>> {
     }
 
     TransientInput::from_pairs(pairs).map_err(Into::into)
-}
-
-fn write_pairs(
-    path: &Path,
-    header: &str,
-    left: impl Iterator<Item = f64>,
-    right: impl Iterator<Item = f64>,
-) -> Result<(), Box<dyn Error>> {
-    let mut file = File::create(path)?;
-    writeln!(file, "{header}")?;
-    for (left, right) in left.zip(right) {
-        writeln!(file, "{left:.17e},{right:.17e}")?;
-    }
-    Ok(())
 }

@@ -10,6 +10,7 @@ pub mod deconvolution;
 pub mod derivative;
 pub mod error;
 pub mod evaluation;
+pub mod export;
 pub mod network;
 pub mod preprocess;
 
@@ -19,5 +20,6 @@ pub use deconvolution::{bayesian_deconvolution, response_matrix, time_spectrum_b
 pub use derivative::z_fit_deriv;
 pub use error::{PyrthError, Result};
 pub use evaluation::{evaluate, CauerNetwork, DerivativeResult, EvaluationResult, FosterNetwork};
+pub use export::{export_csv, ExportedCsvFiles};
 pub use network::{cauer_from_foster_lanczos, foster_from_time_spectrum};
 pub use preprocess::make_impedance_data;

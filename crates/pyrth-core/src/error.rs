@@ -24,4 +24,10 @@ pub enum PyrthError {
 
     #[error("unknown {kind} label: {value}")]
     UnknownMode { kind: &'static str, value: String },
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+
+    #[error(transparent)]
+    Csv(#[from] csv::Error),
 }
