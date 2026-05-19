@@ -15,6 +15,7 @@ import pyrth_py
 
 DATA = [(1e-6, 0.1), (1e-5, 0.2), (1e-4, 0.3)]
 TEMP_DATA = [(1.0, 20.0), (2.0, 19.0), (3.0, 18.0)]
+EXTRAP_TEMP_DATA = [(1.0, 12.0), (4.0, 14.0), (9.0, 16.0), (16.0, 18.0)]
 VOLT_DATA = [(1.0, 0.5), (2.0, 0.4), (3.0, 0.3)]
 CALIBRATION = [(20.0, 0.5), (30.0, 0.4), (40.0, 0.3)]
 
@@ -44,12 +45,26 @@ def main() -> None:
         {
             "data": TEMP_DATA,
             "input_mode": "temp",
+            "deconv_mode": "fourier",
             "only_make_z": True,
             "power_step": 2.0,
             "temp_0_avg_range": (0, 1),
         }
     )
     assert temp_module["impedance"] == [0.0, 0.5, 1.0]
+
+    extrapolated_temp_module = evaluation.standard_module(
+        {
+            "data": EXTRAP_TEMP_DATA,
+            "input_mode": "temp",
+            "only_make_z": True,
+            "extrapolate": True,
+            "lower_fit_limit": 4.0,
+            "upper_fit_limit": 16.0,
+        }
+    )
+    assert len(extrapolated_temp_module["time"]) == 18
+    assert_close_list(extrapolated_temp_module["impedance"][-3:], [-4.0, -6.0, -8.0])
 
     volt_module = evaluation.standard_module(
         {

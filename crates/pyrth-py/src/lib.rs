@@ -29,6 +29,8 @@ impl Evaluation {
         let only_make_z = extract_bool(parameters, "only_make_z")?.unwrap_or(false);
         let calc_struc = extract_bool(parameters, "calc_struc")?.unwrap_or(true);
         let input_mode = extract_string(parameters, "input_mode")?;
+        let deconv_mode =
+            extract_string(parameters, "deconv_mode")?.or(extract_string(parameters, "deconv")?);
         let log_time_size = extract_usize(parameters, "log_time_size")?;
         let bay_steps = extract_usize(parameters, "bay_steps")?;
         let blockwise_sum_width = extract_usize(parameters, "blockwise_sum_width")?;
@@ -41,12 +43,16 @@ impl Evaluation {
         let data_cut_lower = extract_usize(parameters, "data_cut_lower")?;
         let data_cut_upper = extract_usize(parameters, "data_cut_upper")?;
         let temp_0_avg_range = extract_usize_pair(parameters, "temp_0_avg_range")?;
+        let extrapolate = extract_bool(parameters, "extrapolate")?.unwrap_or(false);
+        let lower_fit_limit = extract_f64(parameters, "lower_fit_limit")?;
+        let upper_fit_limit = extract_f64(parameters, "upper_fit_limit")?;
 
         evaluate_impedance_with_params(
             py,
             data,
             EvalOverrides {
                 input_mode,
+                deconv_mode,
                 only_make_z,
                 calc_struc,
                 log_time_size,
@@ -61,6 +67,9 @@ impl Evaluation {
                 data_cut_lower,
                 data_cut_upper,
                 temp_0_avg_range,
+                extrapolate,
+                lower_fit_limit,
+                upper_fit_limit,
             },
         )
     }
@@ -79,6 +88,7 @@ fn evaluate_impedance(
         data,
         EvalOverrides {
             input_mode: None,
+            deconv_mode: None,
             only_make_z,
             calc_struc,
             log_time_size: None,
@@ -93,12 +103,16 @@ fn evaluate_impedance(
             data_cut_lower: None,
             data_cut_upper: None,
             temp_0_avg_range: None,
+            extrapolate: false,
+            lower_fit_limit: None,
+            upper_fit_limit: None,
         },
     )
 }
 
 struct EvalOverrides {
     input_mode: Option<String>,
+    deconv_mode: Option<String>,
     only_make_z: bool,
     calc_struc: bool,
     log_time_size: Option<usize>,
@@ -113,6 +127,9 @@ struct EvalOverrides {
     data_cut_lower: Option<usize>,
     data_cut_upper: Option<usize>,
     temp_0_avg_range: Option<(usize, usize)>,
+    extrapolate: bool,
+    lower_fit_limit: Option<f64>,
+    upper_fit_limit: Option<f64>,
 }
 
 fn evaluate_impedance_with_params(
@@ -126,6 +143,10 @@ fn evaluate_impedance_with_params(
     let mut params = pyrth_core::EvaluationParams::default();
     if let Some(input_mode) = overrides.input_mode {
         params.input_mode = pyrth_core::InputMode::from_label(&input_mode)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    }
+    if let Some(deconv_mode) = overrides.deconv_mode {
+        params.deconv_mode = pyrth_core::DeconvMode::from_label(&deconv_mode)
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
     }
     params.only_make_z = overrides.only_make_z;
@@ -164,6 +185,9 @@ fn evaluate_impedance_with_params(
     if let Some(temp_0_avg_range) = overrides.temp_0_avg_range {
         params.temp_0_avg_range = temp_0_avg_range;
     }
+    params.extrapolate = overrides.extrapolate;
+    params.lower_fit_limit = overrides.lower_fit_limit;
+    params.upper_fit_limit = overrides.upper_fit_limit;
 
     let result = pyrth_core::evaluate(input, &params)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;

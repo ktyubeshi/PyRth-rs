@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use pyrth_core::{evaluate, export_csv, EvaluationParams, InputMode, TransientInput};
+use pyrth_core::{evaluate, export_csv, DeconvMode, EvaluationParams, InputMode, TransientInput};
 
 fn main() {
     if let Err(err) = run() {
@@ -21,6 +21,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let mut params = EvaluationParams::default();
     params.input_mode = args.input_mode;
+    params.deconv_mode = args.deconv_mode;
     params.only_make_z = args.only_make_z;
     params.calc_struc = !args.no_structure;
     if let Some(log_time_size) = args.log_time_size {
@@ -63,6 +64,9 @@ fn run() -> Result<(), Box<dyn Error>> {
     if let Some(temp_0_avg_range) = args.temp_0_avg_range {
         params.temp_0_avg_range = temp_0_avg_range;
     }
+    params.extrapolate = args.extrapolate;
+    params.lower_fit_limit = args.lower_fit_limit;
+    params.upper_fit_limit = args.upper_fit_limit;
 
     let result = evaluate(input, &params)?;
     export_csv(&result, &args.output_dir)?;
@@ -74,6 +78,7 @@ struct CliArgs {
     input: PathBuf,
     output_dir: PathBuf,
     input_mode: InputMode,
+    deconv_mode: DeconvMode,
     only_make_z: bool,
     no_structure: bool,
     log_time_size: Option<usize>,
@@ -90,6 +95,9 @@ struct CliArgs {
     data_cut_lower: Option<usize>,
     data_cut_upper: Option<usize>,
     temp_0_avg_range: Option<(usize, usize)>,
+    extrapolate: bool,
+    lower_fit_limit: Option<f64>,
+    upper_fit_limit: Option<f64>,
 }
 
 impl CliArgs {
@@ -97,6 +105,7 @@ impl CliArgs {
         let mut input = None;
         let mut output_dir = None;
         let mut input_mode = InputMode::Impedance;
+        let mut deconv_mode = DeconvMode::Bayesian;
         let mut only_make_z = false;
         let mut no_structure = false;
         let mut log_time_size = None;
@@ -113,6 +122,9 @@ impl CliArgs {
         let mut data_cut_lower = None;
         let mut data_cut_upper = None;
         let mut temp_0_avg_range = None;
+        let mut extrapolate = false;
+        let mut lower_fit_limit = None;
+        let mut upper_fit_limit = None;
 
         let mut args = args.peekable();
         while let Some(arg) = args.next() {
@@ -142,6 +154,10 @@ impl CliArgs {
                     let value = args.next().ok_or("missing value for --input-mode")?;
                     input_mode = InputMode::from_label(&value)?;
                 }
+                "--deconv" | "--deconv-mode" => {
+                    let value = args.next().ok_or("missing value for --deconv")?;
+                    deconv_mode = DeconvMode::from_label(&value)?;
+                }
                 "--power-step" => power_step = Some(parse_next_f64(&mut args, "--power-step")?),
                 "--power-scale-factor" => {
                     power_scale_factor = Some(parse_next_f64(&mut args, "--power-scale-factor")?)
@@ -163,6 +179,13 @@ impl CliArgs {
                 "--temp-zero-range" => {
                     temp_0_avg_range = Some(parse_next_range(&mut args, "--temp-zero-range")?)
                 }
+                "--extrapolate" => extrapolate = true,
+                "--lower-fit-limit" => {
+                    lower_fit_limit = Some(parse_next_f64(&mut args, "--lower-fit-limit")?)
+                }
+                "--upper-fit-limit" => {
+                    upper_fit_limit = Some(parse_next_f64(&mut args, "--upper-fit-limit")?)
+                }
                 _ if input.is_none() => input = Some(PathBuf::from(arg)),
                 _ if output_dir.is_none() => output_dir = Some(PathBuf::from(arg)),
                 _ => return Err(format!("unknown argument: {arg}").into()),
@@ -173,6 +196,7 @@ impl CliArgs {
             input: input.ok_or("missing input path")?,
             output_dir: output_dir.unwrap_or_else(|| PathBuf::from("output/rust-cli")),
             input_mode,
+            deconv_mode,
             only_make_z,
             no_structure,
             log_time_size,
@@ -189,13 +213,16 @@ impl CliArgs {
             data_cut_lower,
             data_cut_upper,
             temp_0_avg_range,
+            extrapolate,
+            lower_fit_limit,
+            upper_fit_limit,
         })
     }
 }
 
 fn print_usage() {
     println!(
-        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt] [--power-step <w>] [--power-scale-factor <x>] [--optical-power <w>] [--is-heating] [--calibration <path>] [--kfac-fit-deg <n>] [--data-cut-lower <n>] [--data-cut-upper <n>] [--temp-zero-range <start:end>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
+        "Usage: pyrth-cli --input <path> --output <dir> [--input-mode impedance|temp|volt] [--deconv bayesian|fourier] [--power-step <w>] [--power-scale-factor <x>] [--optical-power <w>] [--is-heating] [--calibration <path>] [--kfac-fit-deg <n>] [--data-cut-lower <n>] [--data-cut-upper <n>] [--temp-zero-range <start:end>] [--extrapolate --lower-fit-limit <t> --upper-fit-limit <t>] [--only-make-z] [--no-structure] [--log-time-size <n>] [--bay-steps <n>] [--blockwise-sum-width <n>] [--min-index <n>] [--minimum-window-size <n>]"
     );
 }
 
