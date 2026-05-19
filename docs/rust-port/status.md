@@ -36,7 +36,8 @@ implementation remains the reference implementation.
   - reusable temperature prediction helpers from explicit impulse responses,
     Foster RC parameters, and optimization results
   - comparison metrics for two evaluated results
-  - deterministic bootstrap means from theoretical RC models
+  - deterministic bootstrap means and 10/50/90 percentile bands from
+    theoretical RC models
 - T3Ster text helpers:
   - legacy `.raw` header/data parser
   - `.pwr` power-step parser
@@ -148,7 +149,7 @@ Strict golden comparisons currently cover:
 - comparison metric behavior for spectra, structure functions, and resistance
 - optimization helper validation, flatten/unflatten, bounds, and theoretical
   impedance residuals, including bounded coordinate-search improvement checks
-- deterministic theoretical bootstrap means
+- deterministic theoretical bootstrap means and percentile bands
 
 Lanczos Cauer coverage currently checks:
 
@@ -194,8 +195,8 @@ Lanczos Cauer coverage currently checks:
 - Bootstrap and comparison currently cover core numerical helpers and thin
   `Evaluation` dict facades.  PyO3 also has standard-only
   `comparison_module` sweep support, but it does not yet port Python's
-  bootstrap comparison modes, optimization comparison modes, percentile
-  bootstrap outputs, or exporter parity.
+  bootstrap comparison modes, optimization comparison modes, from-data
+  bootstrap orchestration, or exporter parity.
 - Temperature prediction core and PyO3 helpers now support explicit impulse
   responses, Foster RC parameters, and optimization-result dictionaries, but
   the PyO3 `temperature_prediction` facade still does not run a full

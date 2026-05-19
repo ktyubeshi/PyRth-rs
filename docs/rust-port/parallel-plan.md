@@ -153,7 +153,7 @@ Goal:
 ### H. Theoretical Bootstrap
 
 Status: deterministic bootstrap from theoretical RC models is implemented in
-core.
+core, including mean and 10/50/90 percentile bands.
 
 Owned paths:
 
