@@ -1,7 +1,9 @@
 use approx::assert_relative_eq;
 use ndarray::array;
-#[cfg(feature = "mpfr")]
-use pyrth_core::network::cauer_from_foster_poly_long_mpfr;
+#[cfg(all(feature = "mpfr", not(target_env = "msvc")))]
+use pyrth_core::network::{
+    cauer_from_foster_khatwani_mpfr, cauer_from_foster_poly_long_mpfr, cauer_from_foster_sobhy_mpfr,
+};
 use pyrth_core::{
     error::PyrthError,
     network::{cauer_from_foster_poly_long_f64, foster_impedance_rational_f64},
@@ -52,7 +54,7 @@ fn poly_long_f64_preserves_total_resistance_for_two_branches() {
     assert_relative_eq!(cauer.cumulative_resistance[1], 5.0, epsilon = 1e-12);
 }
 
-#[cfg(feature = "mpfr")]
+#[cfg(all(feature = "mpfr", not(target_env = "msvc")))]
 #[test]
 fn poly_long_mpfr_converts_single_foster_branch() {
     let resistance = array![2.0];
@@ -69,7 +71,7 @@ fn poly_long_mpfr_converts_single_foster_branch() {
     assert!(cauer.differential_structure.is_empty());
 }
 
-#[cfg(feature = "mpfr")]
+#[cfg(all(feature = "mpfr", not(target_env = "msvc")))]
 #[test]
 fn poly_long_mpfr_preserves_total_resistance_for_two_branches() {
     let resistance = array![2.0, 3.0];
@@ -90,15 +92,41 @@ fn poly_long_mpfr_preserves_total_resistance_for_two_branches() {
     assert_relative_eq!(cauer.cumulative_resistance[1], 5.0, epsilon = 1e-12);
 }
 
+#[cfg(all(feature = "mpfr", not(target_env = "msvc")))]
 #[test]
-fn mpfr_structure_methods_stay_explicitly_unsupported_in_evaluate() {
+fn sobhy_mpfr_converts_single_foster_branch() {
+    let resistance = array![2.0];
+    let capacitance = array![3.0];
+
+    let cauer = cauer_from_foster_sobhy_mpfr(&resistance, &capacitance, 250).unwrap();
+
+    assert_eq!(cauer.resistance.len(), 1);
+    assert_eq!(cauer.capacitance.len(), 1);
+    assert_relative_eq!(cauer.resistance[0], 2.0, epsilon = 1e-12);
+    assert_relative_eq!(cauer.capacitance[0], 3.0, epsilon = 1e-12);
+    assert!(cauer.differential_structure.is_empty());
+}
+
+#[cfg(all(feature = "mpfr", not(target_env = "msvc")))]
+#[test]
+fn khatwani_mpfr_converts_single_foster_branch() {
+    let resistance = array![2.0];
+    let capacitance = array![3.0];
+
+    let cauer = cauer_from_foster_khatwani_mpfr(&resistance, &capacitance, 250).unwrap();
+
+    assert_eq!(cauer.resistance.len(), 1);
+    assert_eq!(cauer.capacitance.len(), 1);
+    assert_relative_eq!(cauer.resistance[0], 2.0, epsilon = 1e-12);
+    assert_relative_eq!(cauer.capacitance[0], 3.0, epsilon = 1e-12);
+    assert!(cauer.differential_structure.is_empty());
+}
+
+#[test]
+fn boor_golub_stays_explicitly_unsupported_in_evaluate() {
     let input = TransientInput::from_pairs([(1e-6, 0.0), (1e-5, 0.1), (1e-4, 0.2)]).unwrap();
 
-    let unsupported_methods = [
-        StructureMethod::Sobhy,
-        StructureMethod::BoorGolub,
-        StructureMethod::Khatwani,
-    ];
+    let unsupported_methods = [StructureMethod::BoorGolub];
 
     for structure_method in unsupported_methods {
         let mut params = EvaluationParams {
@@ -126,26 +154,35 @@ fn mpfr_structure_methods_stay_explicitly_unsupported_in_evaluate() {
 
 #[cfg(not(feature = "mpfr"))]
 #[test]
-fn polylong_stays_unsupported_in_evaluate_without_mpfr_feature() {
+fn mpfr_structure_methods_stay_unsupported_in_evaluate_without_mpfr_feature() {
     let input = TransientInput::from_pairs([(1e-6, 0.0), (1e-5, 0.1), (1e-4, 0.2)]).unwrap();
-    let mut params = EvaluationParams {
-        deconv_mode: DeconvMode::Bayesian,
-        structure_method: StructureMethod::PolyLong,
-        log_time_size: 8,
-        bay_steps: 2,
-        min_index: 1,
-        minimum_window_size: 2,
-        calc_struc: true,
-        ..EvaluationParams::default()
-    };
-    params.minimum_window_length = 0.1;
-    params.maximum_window_length = 0.2;
-    params.window_increment = 0.1;
 
-    let err = pyrth_core::evaluate(input, &params).unwrap_err();
+    let unsupported_methods = [
+        StructureMethod::Sobhy,
+        StructureMethod::Khatwani,
+        StructureMethod::PolyLong,
+    ];
 
-    assert!(matches!(
-        err,
-        PyrthError::UnsupportedStructureMethod(mode) if mode == StructureMethod::PolyLong.to_string()
-    ));
+    for structure_method in unsupported_methods {
+        let mut params = EvaluationParams {
+            deconv_mode: DeconvMode::Bayesian,
+            structure_method,
+            log_time_size: 8,
+            bay_steps: 2,
+            min_index: 1,
+            minimum_window_size: 2,
+            calc_struc: true,
+            ..EvaluationParams::default()
+        };
+        params.minimum_window_length = 0.1;
+        params.maximum_window_length = 0.2;
+        params.window_increment = 0.1;
+
+        let err = pyrth_core::evaluate(input.clone(), &params).unwrap_err();
+
+        assert!(matches!(
+            err,
+            PyrthError::UnsupportedStructureMethod(mode) if mode == structure_method.to_string()
+        ));
+    }
 }

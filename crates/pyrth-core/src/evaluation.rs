@@ -110,13 +110,25 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
                 &foster.capacitance,
                 params.precision,
             )?),
+            #[cfg(feature = "mpfr")]
+            StructureMethod::Sobhy => Some(crate::network::cauer_from_foster_sobhy_mpfr(
+                &foster.resistance,
+                &foster.capacitance,
+                params.precision,
+            )?),
+            #[cfg(feature = "mpfr")]
+            StructureMethod::Khatwani => Some(crate::network::cauer_from_foster_khatwani_mpfr(
+                &foster.resistance,
+                &foster.capacitance,
+                params.precision,
+            )?),
             #[cfg(not(feature = "mpfr"))]
-            StructureMethod::PolyLong => {
+            StructureMethod::PolyLong | StructureMethod::Sobhy | StructureMethod::Khatwani => {
                 return Err(PyrthError::UnsupportedStructureMethod(
                     params.structure_method.to_string(),
                 ));
             }
-            StructureMethod::Sobhy | StructureMethod::BoorGolub | StructureMethod::Khatwani => {
+            StructureMethod::BoorGolub => {
                 return Err(PyrthError::UnsupportedStructureMethod(
                     params.structure_method.to_string(),
                 ));

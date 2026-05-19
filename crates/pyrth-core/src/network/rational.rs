@@ -50,18 +50,7 @@ pub fn cauer_from_foster_poly_long_f64(
     let rational = foster_impedance_rational_f64(foster_resistance, foster_capacitance)?;
     let (resistance, capacitance) =
         poly_long_division_to_cauer_f64(&rational.numerator, &rational.denominator)?;
-    let cumulative_resistance = cumulative_sum(&resistance);
-    let cumulative_capacitance = cumulative_sum(&capacitance);
-    let differential_structure =
-        differential_structure(&cumulative_resistance, &cumulative_capacitance);
-
-    Ok(CauerNetwork {
-        resistance: Array1::from(resistance),
-        capacitance: Array1::from(capacitance),
-        cumulative_resistance: Array1::from(cumulative_resistance),
-        cumulative_capacitance: Array1::from(cumulative_capacitance),
-        differential_structure: Array1::from(differential_structure),
-    })
+    cauer_network_from_elements(resistance, capacitance)
 }
 
 #[cfg(feature = "mpfr")]
@@ -71,27 +60,40 @@ pub fn cauer_from_foster_poly_long_mpfr(
     precision: usize,
 ) -> Result<CauerNetwork> {
     validate_foster_inputs(foster_resistance, foster_capacitance)?;
-    let precision = u32::try_from(precision).map_err(|_| PyrthError::InvalidParameter {
-        parameter: "precision",
-        expected: "less than or equal to u32::MAX",
-        actual: precision.to_string(),
-    })?;
+    let precision = validate_mpfr_precision(precision)?;
 
     let rational = foster_impedance_rational_mpfr(foster_resistance, foster_capacitance, precision);
     let (resistance, capacitance) =
         poly_long_division_to_cauer_mpfr(&rational.numerator, &rational.denominator, precision)?;
-    let cumulative_resistance = cumulative_sum(&resistance);
-    let cumulative_capacitance = cumulative_sum(&capacitance);
-    let differential_structure =
-        differential_structure(&cumulative_resistance, &cumulative_capacitance);
+    cauer_network_from_elements(resistance, capacitance)
+}
 
-    Ok(CauerNetwork {
-        resistance: Array1::from(resistance),
-        capacitance: Array1::from(capacitance),
-        cumulative_resistance: Array1::from(cumulative_resistance),
-        cumulative_capacitance: Array1::from(cumulative_capacitance),
-        differential_structure: Array1::from(differential_structure),
-    })
+#[cfg(feature = "mpfr")]
+pub fn cauer_from_foster_sobhy_mpfr(
+    foster_resistance: &Array1<f64>,
+    foster_capacitance: &Array1<f64>,
+    precision: usize,
+) -> Result<CauerNetwork> {
+    cauer_from_foster_j_fraction_mpfr(
+        foster_resistance,
+        foster_capacitance,
+        precision,
+        JFractionMethod::Sobhy,
+    )
+}
+
+#[cfg(feature = "mpfr")]
+pub fn cauer_from_foster_khatwani_mpfr(
+    foster_resistance: &Array1<f64>,
+    foster_capacitance: &Array1<f64>,
+    precision: usize,
+) -> Result<CauerNetwork> {
+    cauer_from_foster_j_fraction_mpfr(
+        foster_resistance,
+        foster_capacitance,
+        precision,
+        JFractionMethod::Khatwani,
+    )
 }
 
 pub(crate) fn poly_long_division_to_cauer_f64(
@@ -269,11 +271,59 @@ fn validate_foster_inputs(resistance: &Array1<f64>, capacitance: &Array1<f64>) -
     Ok(())
 }
 
+fn cauer_network_from_elements(
+    resistance: Vec<f64>,
+    capacitance: Vec<f64>,
+) -> Result<CauerNetwork> {
+    if resistance.len() != capacitance.len() {
+        return Err(PyrthError::LengthMismatch {
+            time_len: resistance.len(),
+            value_len: capacitance.len(),
+        });
+    }
+    if resistance
+        .iter()
+        .chain(capacitance.iter())
+        .any(|value| !value.is_finite() || *value <= 0.0)
+    {
+        return invalid_structure("finite positive Cauer elements");
+    }
+
+    let cumulative_resistance = cumulative_sum(&resistance);
+    let cumulative_capacitance = cumulative_sum(&capacitance);
+    let differential_structure =
+        differential_structure(&cumulative_resistance, &cumulative_capacitance);
+
+    Ok(CauerNetwork {
+        resistance: Array1::from(resistance),
+        capacitance: Array1::from(capacitance),
+        cumulative_resistance: Array1::from(cumulative_resistance),
+        cumulative_capacitance: Array1::from(cumulative_capacitance),
+        differential_structure: Array1::from(differential_structure),
+    })
+}
+
 #[cfg(feature = "mpfr")]
 #[derive(Clone, Debug, PartialEq)]
 struct FosterRationalMpfr {
     numerator: Vec<Float>,
     denominator: Vec<Float>,
+}
+
+#[cfg(feature = "mpfr")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum JFractionMethod {
+    Sobhy,
+    Khatwani,
+}
+
+#[cfg(feature = "mpfr")]
+fn validate_mpfr_precision(precision: usize) -> Result<u32> {
+    u32::try_from(precision).map_err(|_| PyrthError::InvalidParameter {
+        parameter: "precision",
+        expected: "less than or equal to u32::MAX",
+        actual: precision.to_string(),
+    })
 }
 
 #[cfg(feature = "mpfr")]
@@ -305,6 +355,286 @@ fn foster_impedance_rational_mpfr(
         numerator,
         denominator,
     }
+}
+
+#[cfg(feature = "mpfr")]
+fn cauer_from_foster_j_fraction_mpfr(
+    foster_resistance: &Array1<f64>,
+    foster_capacitance: &Array1<f64>,
+    precision: usize,
+    method: JFractionMethod,
+) -> Result<CauerNetwork> {
+    validate_foster_inputs(foster_resistance, foster_capacitance)?;
+    let precision = validate_mpfr_precision(precision)?;
+    let rational = foster_impedance_rational_mpfr(foster_resistance, foster_capacitance, precision);
+    let (cleaned_num, cleaned_den) =
+        normalize_rational_polynomials_mpfr(&rational.numerator, &rational.denominator, precision)?;
+    let n_terms = cleaned_den.len();
+    let (large_h, small_h) = match method {
+        JFractionMethod::Sobhy => {
+            sobhy_method_mpfr(n_terms, &cleaned_num, &cleaned_den, precision)?
+        }
+        JFractionMethod::Khatwani => {
+            let markov_parameters =
+                generate_markov_params_mpfr(&cleaned_num, &cleaned_den, precision);
+            khatwani_method_mpfr(n_terms, &markov_parameters, precision)?
+        }
+    };
+    let (resistance, capacitance) =
+        continued_fraction_to_cauer_mpfr(n_terms, &large_h, &small_h, precision)?;
+    cauer_network_from_elements(resistance, capacitance)
+}
+
+#[cfg(feature = "mpfr")]
+fn normalize_rational_polynomials_mpfr(
+    numerator: &[Float],
+    denominator: &[Float],
+    precision: u32,
+) -> Result<(Vec<Float>, Vec<Float>)> {
+    if numerator.is_empty() || denominator.is_empty() {
+        return invalid_structure("non-empty numerator and denominator");
+    }
+    let lead = denominator.last().unwrap();
+    if lead == &Float::with_val(precision, 0) {
+        return invalid_structure("non-zero denominator leading coefficient");
+    }
+
+    let inverse = Float::with_val(precision, Float::with_val(precision, 1) / lead);
+    let n_terms = denominator.len();
+    let mut cleaned_num = Vec::with_capacity(n_terms);
+    cleaned_num.push(Float::with_val(precision, 0));
+    for i in 0..n_terms - 1 {
+        let source = n_terms - i - 2;
+        let value = numerator
+            .get(source)
+            .cloned()
+            .unwrap_or_else(|| Float::with_val(precision, 0));
+        cleaned_num.push(Float::with_val(precision, &inverse * value));
+    }
+
+    let cleaned_den = (0..n_terms)
+        .map(|i| Float::with_val(precision, &inverse * &denominator[n_terms - i - 1]))
+        .collect();
+
+    Ok((cleaned_num, cleaned_den))
+}
+
+#[cfg(feature = "mpfr")]
+fn generate_markov_params_mpfr(
+    cleaned_num: &[Float],
+    cleaned_den: &[Float],
+    precision: u32,
+) -> Vec<Float> {
+    let n_terms = cleaned_den.len();
+    let max_order = 2 * n_terms;
+    let mut expansion_len = 1;
+    let mut last_term = vec![Float::with_val(precision, 1)];
+    let mut last_error = cleaned_den[1..].to_vec();
+
+    while expansion_len < max_order {
+        let mut pre_term = vec![Float::with_val(precision, 0); expansion_len];
+        pre_term.extend(last_term.iter().cloned());
+
+        let correction =
+            polynomial_mul_mpfr_truncated(&last_error, &pre_term, max_order, precision);
+        last_term = polynomial_sub_mpfr(&last_term, &correction, precision);
+        last_error = polynomial_neg_mpfr(&polynomial_mul_mpfr_truncated(
+            &last_error,
+            &last_error,
+            max_order,
+            precision,
+        ));
+
+        expansion_len *= 2;
+    }
+
+    let product = polynomial_mul_mpfr(cleaned_num, &last_term, precision);
+    (1..=max_order)
+        .map(|i| {
+            product
+                .get(i)
+                .cloned()
+                .unwrap_or_else(|| Float::with_val(precision, 0))
+        })
+        .collect()
+}
+
+#[cfg(feature = "mpfr")]
+fn khatwani_method_mpfr(
+    n_terms: usize,
+    markov_parameters: &[Float],
+    precision: u32,
+) -> Result<(Vec<Float>, Vec<Float>)> {
+    if n_terms < 2 || markov_parameters.len() < 2 * n_terms {
+        return invalid_structure("sufficient Markov parameters for Khatwani conversion");
+    }
+
+    let mut a_matrix = vec![vec![Float::with_val(precision, 0); 2 * n_terms]; n_terms + 1];
+    a_matrix[0][0] = Float::with_val(precision, 1);
+    a_matrix[1][..(2 * n_terms)].clone_from_slice(&markov_parameters[..(2 * n_terms)]);
+
+    let mut large_h = vec![Float::with_val(precision, 0); n_terms - 1];
+    let mut small_h = vec![Float::with_val(precision, 0); n_terms - 1];
+
+    large_h[0] = checked_div_mpfr(&a_matrix[0][0], &a_matrix[1][0], precision)?;
+    small_h[0] = checked_div_mpfr(
+        &Float::with_val(precision, &a_matrix[0][1] - &large_h[0] * &a_matrix[1][1]),
+        &a_matrix[1][0],
+        precision,
+    )?;
+
+    for i in 2..n_terms {
+        for j in 0..(2 * n_terms - (i - 1) * 2) {
+            a_matrix[i][j] = Float::with_val(
+                precision,
+                &a_matrix[i - 2][j + 2]
+                    - Float::with_val(precision, &large_h[i - 2] * &a_matrix[i - 1][j + 2])
+                    - Float::with_val(precision, &small_h[i - 2] * &a_matrix[i - 1][j + 1]),
+            );
+        }
+
+        large_h[i - 1] = checked_div_mpfr(&a_matrix[i - 1][0], &a_matrix[i][0], precision)?;
+        small_h[i - 1] = checked_div_mpfr(
+            &Float::with_val(
+                precision,
+                &a_matrix[i - 1][1] - Float::with_val(precision, &large_h[i - 1] * &a_matrix[i][1]),
+            ),
+            &a_matrix[i][0],
+            precision,
+        )?;
+    }
+
+    Ok((large_h, small_h))
+}
+
+#[cfg(feature = "mpfr")]
+fn sobhy_method_mpfr(
+    n_terms: usize,
+    cleaned_num: &[Float],
+    cleaned_den: &[Float],
+    precision: u32,
+) -> Result<(Vec<Float>, Vec<Float>)> {
+    if n_terms < 2 || cleaned_num.len() < n_terms || cleaned_den.len() < n_terms {
+        return invalid_structure("normalized rational polynomials for Sobhy conversion");
+    }
+
+    let mut a_table = vec![vec![Float::with_val(precision, 0); n_terms]; n_terms + 1];
+    let mut b_table = vec![vec![Float::with_val(precision, 0); n_terms]; n_terms + 1];
+
+    for i in 0..n_terms {
+        a_table[0][i] = cleaned_den[i].clone();
+        b_table[0][i] = cleaned_den[i].clone();
+    }
+    for i in 0..n_terms - 1 {
+        a_table[1][i] = cleaned_num[i + 1].clone();
+    }
+
+    for k in 0..n_terms - 1 {
+        b_table[1][k] = Float::with_val(
+            precision,
+            &a_table[0][k + 1]
+                - checked_div_mpfr(&a_table[0][0], &a_table[1][0], precision)? * &a_table[1][k + 1],
+        );
+    }
+
+    for j in 2..=n_terms {
+        for k in 0..n_terms - j {
+            a_table[j][k] = Float::with_val(
+                precision,
+                &b_table[j - 1][k + 1]
+                    - checked_div_mpfr(&b_table[j - 1][0], &a_table[j - 1][0], precision)?
+                        * &a_table[j - 1][k + 1],
+            );
+        }
+        for k in 0..n_terms - j {
+            b_table[j][k] = Float::with_val(
+                precision,
+                &a_table[j - 1][k + 1]
+                    - checked_div_mpfr(&a_table[j - 1][0], &a_table[j][0], precision)?
+                        * &a_table[j][k + 1],
+            );
+        }
+    }
+
+    let mut large_h = Vec::with_capacity(n_terms - 1);
+    let mut small_h = Vec::with_capacity(n_terms - 1);
+    for m in 1..n_terms {
+        large_h.push(checked_div_mpfr(
+            &a_table[m - 1][0],
+            &a_table[m][0],
+            precision,
+        )?);
+        small_h.push(checked_div_mpfr(&b_table[m][0], &a_table[m][0], precision)?);
+    }
+
+    Ok((large_h, small_h))
+}
+
+#[cfg(feature = "mpfr")]
+fn continued_fraction_to_cauer_mpfr(
+    n_terms: usize,
+    large_h: &[Float],
+    small_h: &[Float],
+    precision: u32,
+) -> Result<(Vec<f64>, Vec<f64>)> {
+    if n_terms < 2 || large_h.len() < n_terms - 1 || small_h.len() < n_terms - 1 {
+        return invalid_structure("H-h continued fraction coefficients");
+    }
+
+    let mut a_square = vec![Float::with_val(precision, 0); n_terms - 1];
+    let mut small_b = vec![Float::with_val(precision, 0); n_terms - 1];
+
+    a_square[0] = checked_div_mpfr(&Float::with_val(precision, 1), &large_h[0], precision)?;
+    small_b[0] = Float::with_val(precision, -&small_h[0] / &large_h[0]);
+
+    for i in 1..n_terms - 1 {
+        a_square[i] = checked_div_mpfr(
+            &Float::with_val(precision, -1),
+            &Float::with_val(precision, &large_h[i] * &large_h[i - 1]),
+            precision,
+        )?;
+        small_b[i] = Float::with_val(precision, -&small_h[i] / &large_h[i]);
+    }
+
+    let mut small_c = vec![Float::with_val(precision, 0); 2 * (n_terms - 1)];
+    small_c[0] = checked_div_mpfr(&Float::with_val(precision, 1), &a_square[0], precision)?;
+    small_c[1] = checked_div_mpfr(
+        &Float::with_val(precision, -&a_square[0]),
+        &small_b[0],
+        precision,
+    )?;
+
+    for i in 1..n_terms - 1 {
+        small_c[2 * i] = checked_div_mpfr(
+            &Float::with_val(precision, 1),
+            &Float::with_val(
+                precision,
+                &small_c[2 * i - 2] * &small_c[2 * i - 1] * &small_c[2 * i - 1] * &a_square[i],
+            ),
+            precision,
+        )?;
+        small_c[2 * i + 1] = checked_div_mpfr(
+            &Float::with_val(precision, -&small_c[2 * i - 1]),
+            &Float::with_val(
+                precision,
+                Float::with_val(precision, 1)
+                    + Float::with_val(
+                        precision,
+                        &small_c[2 * i] * &small_c[2 * i - 1] * &small_b[i],
+                    ),
+            ),
+            precision,
+        )?;
+    }
+
+    let mut resistance = Vec::with_capacity(n_terms - 1);
+    let mut capacitance = Vec::with_capacity(n_terms - 1);
+    for i in 0..n_terms - 1 {
+        capacitance.push(small_c[2 * i].to_f64());
+        resistance.push(small_c[2 * i + 1].to_f64());
+    }
+
+    Ok((resistance, capacitance))
 }
 
 #[cfg(feature = "mpfr")]
@@ -459,6 +789,64 @@ fn polynomial_add_mpfr(left: &[Float], right: &[Float], precision: u32) -> Vec<F
         *value = Float::with_val(precision, left_value + right_value);
     }
     sum
+}
+
+#[cfg(feature = "mpfr")]
+fn polynomial_sub_mpfr(left: &[Float], right: &[Float], precision: u32) -> Vec<Float> {
+    let len = left.len().max(right.len());
+    let mut diff = vec![Float::with_val(precision, 0); len];
+    for (i, value) in diff.iter_mut().enumerate() {
+        let left_value = left
+            .get(i)
+            .cloned()
+            .unwrap_or_else(|| Float::with_val(precision, 0));
+        let right_value = right
+            .get(i)
+            .cloned()
+            .unwrap_or_else(|| Float::with_val(precision, 0));
+        *value = Float::with_val(precision, left_value - right_value);
+    }
+    trim_trailing_zeros_mpfr(&mut diff);
+    diff
+}
+
+#[cfg(feature = "mpfr")]
+fn polynomial_neg_mpfr(values: &[Float]) -> Vec<Float> {
+    values
+        .iter()
+        .map(|value| Float::with_val(value.prec(), -value))
+        .collect()
+}
+
+#[cfg(feature = "mpfr")]
+fn polynomial_mul_mpfr_truncated(
+    left: &[Float],
+    right: &[Float],
+    max_len: usize,
+    precision: u32,
+) -> Vec<Float> {
+    let len = (left.len() + right.len() - 1).min(max_len);
+    let mut product = vec![Float::with_val(precision, 0); len];
+    for (left_index, left_value) in left.iter().enumerate() {
+        for (right_index, right_value) in right.iter().enumerate() {
+            let index = left_index + right_index;
+            if index >= max_len {
+                break;
+            }
+            let term = Float::with_val(precision, left_value * right_value);
+            product[index] = Float::with_val(precision, &product[index] + term);
+        }
+    }
+    trim_trailing_zeros_mpfr(&mut product);
+    product
+}
+
+#[cfg(feature = "mpfr")]
+fn checked_div_mpfr(numerator: &Float, denominator: &Float, precision: u32) -> Result<Float> {
+    if denominator == &Float::with_val(precision, 0) {
+        return invalid_structure("non-zero divisor in MPFR conversion");
+    }
+    Ok(Float::with_val(precision, numerator / denominator))
 }
 
 #[cfg(feature = "mpfr")]
