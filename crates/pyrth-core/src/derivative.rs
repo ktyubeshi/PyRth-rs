@@ -2,8 +2,6 @@ use ndarray::Array1;
 
 use crate::{config::EvaluationParams, error::Result, evaluation::DerivativeResult};
 
-const ESTIMATOR_TIE_EPSILON: f64 = 1e-18;
-
 pub fn z_fit_deriv(
     impedance: &Array1<f64>,
     log_time: &Array1<f64>,
@@ -134,9 +132,7 @@ pub fn z_fit_deriv(
             let estimator = poly_value.powf(2.0) - 2.0 * z_frame[center_index] * poly_value
                 + 2.0 * var * diff_term;
 
-            // Python/Numba can keep the earlier window when estimator values
-            // differ only by roundoff noise; preserve that stable tie break.
-            if estimator < best_estimator - ESTIMATOR_TIE_EPSILON {
+            if estimator < best_estimator {
                 best_estimator = estimator;
                 best_poly_val = poly_value;
                 best_diff_val = coefs.slope;

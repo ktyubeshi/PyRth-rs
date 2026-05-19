@@ -215,9 +215,10 @@ Lanczos Cauer coverage currently checks:
   recurrence is not yet safe.
 - LED derivative golden equality is not enabled.  Its small-window settings
   hit near-ties in the adaptive estimator and currently diverge by window
-  selection in a few positions.  `led_derivative_python_golden_diagnostic`
-  is an ignored golden test that reports the current first mismatch and max
-  deltas without changing production output.
+  selection in a few positions.  The active tolerance guard tracks the known
+  delta envelope, while `led_derivative_python_golden_diagnostic` is an ignored
+  golden test that reports the current first mismatch and max deltas without
+  changing production output.
 - PyO3 standard-evaluation methods now return minimal `StructureFunction`
   objects instead of plain dictionaries while preserving dict-like read access
   and common Python-style array aliases for smoke-level compatibility.  CSV and

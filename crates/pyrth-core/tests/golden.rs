@@ -143,6 +143,51 @@ fn impedance_and_derivative_match_python_golden() {
 }
 
 #[test]
+fn led_derivative_stays_within_known_python_golden_gap() {
+    let fixture_name = "led_bayesian_lanczos.json";
+    let (fixture, result) = evaluate_fixture(fixture_name);
+    let derivative = result.derivative.as_ref().unwrap();
+
+    assert_relative_eq!(
+        derivative.log_time_delta,
+        fixture.reference.log_time_delta,
+        epsilon = 1e-12,
+        max_relative = 1e-10
+    );
+    assert_array_close(
+        &format!("{fixture_name}:log_time_interp"),
+        &derivative.log_time_interp,
+        &fixture.reference.log_time_interp,
+    );
+    assert_array_close(
+        &format!("{fixture_name}:log_time_pad"),
+        &derivative.log_time_pad,
+        &fixture.reference.log_time_pad,
+    );
+    assert_array_close_with_tolerance(
+        &format!("{fixture_name}:imp_smooth"),
+        &derivative.imp_smooth,
+        &fixture.reference.imp_smooth,
+        1.2e-2,
+        1.2e-2,
+    );
+    assert_array_close_with_tolerance(
+        &format!("{fixture_name}:imp_smooth_full"),
+        &derivative.imp_smooth_full,
+        &fixture.reference.imp_smooth_full,
+        1.2e-2,
+        1.2e-2,
+    );
+    assert_array_close_with_tolerance(
+        &format!("{fixture_name}:imp_deriv_interp"),
+        &derivative.imp_deriv_interp,
+        &fixture.reference.imp_deriv_interp,
+        1.2e-2,
+        1.4e-2,
+    );
+}
+
+#[test]
 #[ignore = "LED derivative parity is a known gap; run to inspect current deltas"]
 fn led_derivative_python_golden_diagnostic() {
     let fixture_name = "led_bayesian_lanczos.json";
