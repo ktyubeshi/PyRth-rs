@@ -35,6 +35,7 @@ htmlcov/
 *.log
 *.tmp
 *.temp
+tmp/
 *.bak
 
 # Output directories
