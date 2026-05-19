@@ -140,7 +140,8 @@ implementation remains the reference implementation.
     impulse responses, Foster RC arrays, optimization result dicts, or
     optimization parameter dictionaries that are solved internally before
     prediction, and labeled temperature-prediction calls are tracked in the
-    module registry
+    module registry and exported through `save_as_csv`, `save_figures`, and
+    `save_all`
   - `Evaluation().bootstrap({...})` accepts Python-style theoretical aliases
     (`theo_resistances`, `theo_capacitances`, `theo_time`,
     `theo_time_size`) plus `signal_to_noise_ratio` and `random_seed`
@@ -196,6 +197,8 @@ Lanczos Cauer coverage currently checks:
 - first cumulative Cauer block against Python golden for MOSFET TIM and MOSFET dry
 - non-empty, finite, non-negative Cauer branches
 - monotonic cumulative resistance
+- finite positive single/two-branch Lanczos Cauer outputs without non-finite
+  tails
 - ignored diagnostic coverage for full-array Cauer equality drift; run
   `cargo test -p pyrth-core --test golden diagnostic_lanczos_cauer_full_array_golden_equality -- --ignored --nocapture`
   to report the Rust/Python length, first mismatch, maximum absolute drift, and
@@ -218,10 +221,11 @@ Lanczos Cauer coverage currently checks:
   recurrence is not yet safe.
 - LED derivative golden equality is not enabled.  Its small-window settings
   hit near-ties in the adaptive estimator and currently diverge by window
-  selection in a few positions.  The active tolerance guard tracks the known
-  delta envelope, while `led_derivative_python_golden_diagnostic` is an ignored
-  golden test that reports the current first mismatch and max deltas without
-  changing production output.
+  selection in a few positions.  The active tolerance guard now tracks the
+  reduced delta envelope after matching the low-level arithmetic order more
+  closely, while `led_derivative_python_golden_diagnostic` is an ignored golden
+  test that reports the current first mismatch and max deltas without changing
+  production output.
 - PyO3 standard-evaluation methods now return minimal `StructureFunction`
   objects instead of plain dictionaries while preserving dict-like read access
   and common Python-style array aliases for smoke-level compatibility.  CSV and
@@ -254,9 +258,10 @@ Lanczos Cauer coverage currently checks:
 - Temperature prediction core and PyO3 helpers now support explicit impulse
   responses, Foster RC parameters, optimization-result dictionaries, and a
   minimal internal optimization path from RC optimization parameters.  Labeled
-  PyO3 temperature-prediction calls now participate in module bookkeeping.
-  Remaining parity work is around broader Python export behavior for
-  non-structure modules and orchestration details.
+  PyO3 temperature-prediction calls now participate in module bookkeeping and
+  export `temperature_prediction.csv` / `.svg`.  Remaining parity work is
+  around broader Python orchestration details and richer power/temperature
+  prediction export parity.
 - The next implementation work is split into non-overlapping `jj` slices in
   `docs/rust-port/parallel-plan.md`.
 

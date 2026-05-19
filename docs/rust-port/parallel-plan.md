@@ -120,7 +120,8 @@ Status: theoretical RC impedance generation, standard temperature prediction,
 reusable RC/optimization-result temperature prediction helpers, and the matching
 PyO3 facades are implemented.  The PyO3 temperature prediction facade can also
 run the current RC optimization helper internally before prediction, and labeled
-temperature-prediction calls are registered in the module bookkeeping layer.
+temperature-prediction calls are registered in the module bookkeeping layer and
+exported as `temperature_prediction.csv` / `.svg`.
 
 Owned paths:
 
@@ -133,7 +134,7 @@ Goal:
 
 - Build the foundation for comparison, bootstrap-from-theoretical, and
   temperature prediction workflows.  The remaining work is full Python-style
-  orchestration and export behavior around non-structure modules.
+  orchestration plus richer power/temperature prediction export parity.
 
 ### G. Comparison Metrics
 
@@ -159,6 +160,8 @@ Goal:
 - PyO3 `save_figures` exports simple SVG figures for every registered
   standard-evaluation module into per-label output directories, and `save_all`
   now returns both CSV and figure path dictionaries.
+- PyO3 `save_as_csv`, `save_figures`, and `save_all` also export labeled
+  temperature-prediction modules.
 - CLI `--figures-output` writes the same simple SVG figures next to the
   existing CSV output path when requested.
 - Core SVG export now records and applies simple linear/log axis scales for the
@@ -196,7 +199,9 @@ are implemented behind the non-default `mpfr` feature.  Boor-Golub adapts the
 Python-shaped raw output by dropping the trailing zero-resistance sentinel
 before constructing Rust's `CauerNetwork`.  `rug` is optional, and Windows MSVC
 cannot currently build `gmp-mpfr-sys`, so MPFR verification needs a supported
-GNU/Linux or Windows GNU toolchain.
+GNU/Linux or Windows GNU toolchain.  Lanczos Cauer now stops before non-finite
+tails and has finite positive single/two-branch guards, but full-array Python
+golden equality remains unresolved.
 
 Owned paths:
 
