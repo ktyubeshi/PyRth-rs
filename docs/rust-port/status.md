@@ -38,6 +38,8 @@ implementation remains the reference implementation.
   - comparison metrics for two evaluated results
   - deterministic bootstrap means and 10/50/90 percentile bands from
     theoretical RC models
+  - deterministic bootstrap means and 10/50/90 percentile bands from existing
+    impedance inputs
 - T3Ster text helpers:
   - legacy `.raw` header/data parser
   - `.pwr` power-step parser
@@ -106,7 +108,8 @@ implementation remains the reference implementation.
   - `Evaluation().module_labels()` and `Evaluation().module_count()` for the
     current minimal module registry, including duplicate-label suffixing
   - `Evaluation().module(label)` returns a minimal `StructureFunction` PyO3
-    object with common result attributes and `to_dict()`
+    object with common result attributes, `to_dict()`, dict-like key access,
+    and compatibility with `Evaluation().comparison(...)`
   - `Evaluation().save_as_csv(output_dir="output/csv")` and `save_all(...)`
     export all registered standard-evaluation modules through the core CSV
     exporter into per-label subdirectories
@@ -205,11 +208,14 @@ Lanczos Cauer coverage currently checks:
   the Python raw output can include a zero trailing resistance that does not
   fit the current `CauerNetwork` contract.
 - Bootstrap and comparison currently cover core numerical helpers and thin
-  `Evaluation` dict facades.  PyO3 also has standard-only
+  `Evaluation` dict facades.  Core bootstrap can now run from theoretical RC
+  models or from existing impedance inputs with deterministic seeded noise.
+  PyO3 also has standard-only
   `comparison_module` sweep support, but it does not yet port Python's
   bootstrap comparison modes, optimization comparison modes, or from-data
-  bootstrap orchestration.  The theoretical bootstrap facade accepts the
-  Python-style theoretical aliases and emits percentile bands.
+  bootstrap orchestration at the PyO3 facade level.  The theoretical bootstrap
+  facade accepts the Python-style theoretical aliases and emits percentile
+  bands.
 - Temperature prediction core and PyO3 helpers now support explicit impulse
   responses, Foster RC parameters, and optimization-result dictionaries, but
   the PyO3 `temperature_prediction` facade still does not run a full
