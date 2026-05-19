@@ -3,6 +3,36 @@
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 pub use pyrth_core::*;
 
+#[pyclass]
+struct Evaluation;
+
+#[pymethods]
+impl Evaluation {
+    #[new]
+    fn new() -> Self {
+        Self
+    }
+
+    fn standard_module(
+        &self,
+        py: Python<'_>,
+        parameters: &Bound<'_, PyDict>,
+    ) -> PyResult<PyObject> {
+        let data = parameters
+            .get_item("data")?
+            .ok_or_else(|| PyValueError::new_err("data must be provided"))?
+            .extract::<Vec<(f64, f64)>>()
+            .map_err(|err| {
+                PyValueError::new_err(format!("data must be a sequence of pairs: {err}"))
+            })?;
+
+        let only_make_z = extract_bool(parameters, "only_make_z")?.unwrap_or(false);
+        let calc_struc = extract_bool(parameters, "calc_struc")?.unwrap_or(true);
+
+        evaluate_impedance(py, data, only_make_z, calc_struc)
+    }
+}
+
 #[pyfunction]
 #[pyo3(signature = (data, only_make_z=false, calc_struc=true))]
 fn evaluate_impedance(
@@ -73,6 +103,15 @@ fn evaluate_impedance(
 
 #[pymodule]
 fn pyrth_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<Evaluation>()?;
     m.add_function(wrap_pyfunction!(evaluate_impedance, m)?)?;
     Ok(())
+}
+
+fn extract_bool(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<bool>> {
+    parameters
+        .get_item(key)?
+        .map(|value| value.extract::<bool>())
+        .transpose()
+        .map_err(|err| PyValueError::new_err(format!("{key} must be bool: {err}")))
 }
