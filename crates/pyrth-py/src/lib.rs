@@ -28,8 +28,21 @@ impl Evaluation {
 
         let only_make_z = extract_bool(parameters, "only_make_z")?.unwrap_or(false);
         let calc_struc = extract_bool(parameters, "calc_struc")?.unwrap_or(true);
+        let log_time_size = extract_usize(parameters, "log_time_size")?;
+        let bay_steps = extract_usize(parameters, "bay_steps")?;
+        let blockwise_sum_width = extract_usize(parameters, "blockwise_sum_width")?;
 
-        evaluate_impedance(py, data, only_make_z, calc_struc)
+        evaluate_impedance_with_params(
+            py,
+            data,
+            EvalOverrides {
+                only_make_z,
+                calc_struc,
+                log_time_size,
+                bay_steps,
+                blockwise_sum_width,
+            },
+        )
     }
 }
 
@@ -41,12 +54,47 @@ fn evaluate_impedance(
     only_make_z: bool,
     calc_struc: bool,
 ) -> PyResult<PyObject> {
+    evaluate_impedance_with_params(
+        py,
+        data,
+        EvalOverrides {
+            only_make_z,
+            calc_struc,
+            log_time_size: None,
+            bay_steps: None,
+            blockwise_sum_width: None,
+        },
+    )
+}
+
+struct EvalOverrides {
+    only_make_z: bool,
+    calc_struc: bool,
+    log_time_size: Option<usize>,
+    bay_steps: Option<usize>,
+    blockwise_sum_width: Option<usize>,
+}
+
+fn evaluate_impedance_with_params(
+    py: Python<'_>,
+    data: Vec<(f64, f64)>,
+    overrides: EvalOverrides,
+) -> PyResult<PyObject> {
     let input = pyrth_core::TransientInput::from_pairs(data)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
     let mut params = pyrth_core::EvaluationParams::default();
-    params.only_make_z = only_make_z;
-    params.calc_struc = calc_struc;
+    params.only_make_z = overrides.only_make_z;
+    params.calc_struc = overrides.calc_struc;
+    if let Some(log_time_size) = overrides.log_time_size {
+        params.log_time_size = log_time_size;
+    }
+    if let Some(bay_steps) = overrides.bay_steps {
+        params.bay_steps = bay_steps;
+    }
+    if let Some(blockwise_sum_width) = overrides.blockwise_sum_width {
+        params.blockwise_sum_width = blockwise_sum_width;
+    }
 
     let result = pyrth_core::evaluate(input, &params)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
@@ -114,4 +162,12 @@ fn extract_bool(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<bo
         .map(|value| value.extract::<bool>())
         .transpose()
         .map_err(|err| PyValueError::new_err(format!("{key} must be bool: {err}")))
+}
+
+fn extract_usize(parameters: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<usize>> {
+    parameters
+        .get_item(key)?
+        .map(|value| value.extract::<usize>())
+        .transpose()
+        .map_err(|err| PyValueError::new_err(format!("{key} must be a positive integer: {err}")))
 }

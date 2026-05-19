@@ -31,6 +31,19 @@ def main() -> None:
     module = evaluation.standard_module({"data": DATA, "only_make_z": True})
     assert_impedance_only(module)
 
+    try:
+        evaluation.standard_module(
+            {
+                "data": DATA,
+                "only_make_z": False,
+                "log_time_size": 0,
+            }
+        )
+    except ValueError as exc:
+        assert "log_time_size" in str(exc)
+    else:
+        raise AssertionError("invalid log_time_size should raise ValueError")
+
 
 if __name__ == "__main__":
     main()
