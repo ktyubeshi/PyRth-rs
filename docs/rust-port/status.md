@@ -43,15 +43,22 @@ implementation remains the reference implementation.
   - `--minimum-window-size`
   - `--input-mode`
   - `--power-step`
+  - `--power-scale-factor`
+  - `--optical-power`
   - `--is-heating`
   - `--calibration`
   - `--kfac-fit-deg`
+  - `--data-cut-lower`
+  - `--data-cut-upper`
+  - `--temp-zero-range`
 - Minimal PyO3 entrypoint:
   - `evaluate_impedance(data, only_make_z=False, calc_struc=True)`
   - `Evaluation().standard_module({"data": ...})`
   - `standard_module` accepts `input_mode`, `only_make_z`, `calc_struc`,
     `log_time_size`, `bay_steps`, `blockwise_sum_width`, `power_step`,
-    `is_heating`, `calibration`, and `kfac_fit_deg`
+    `power_scale_factor`, `optical_power`, `is_heating`, `calibration`,
+    `kfac_fit_deg`, `data_cut_lower`, `data_cut_upper`, and
+    `temp_0_avg_range`
 
 ## Golden Coverage
 
@@ -92,7 +99,7 @@ uv run --python 3.12 --with-editable . --with pytest pytest tests/cases/test_sta
 cargo test
 cargo run -p pyrth-cli -- --input target\tmp\cli-input.csv --output target\tmp\cli-smoke --only-make-z
 cargo run -p pyrth-cli -- --input target\tmp\cli-input.csv --output target\tmp\cli-full-small --log-time-size 10 --bay-steps 2 --min-index 1 --minimum-window-size 2 --no-structure
-cargo run -p pyrth-cli -- --input target\tmp\temp-input.csv --output target\tmp\cli-temp --input-mode temp --power-step 2 --only-make-z
+cargo run -p pyrth-cli -- --input target\tmp\temp-input.csv --output target\tmp\cli-temp --input-mode temp --power-step 2 --temp-zero-range 0:1 --only-make-z
 cargo run -p pyrth-cli -- --input target\tmp\volt-input.csv --output target\tmp\cli-volt --input-mode volt --calibration target\tmp\calib.csv --kfac-fit-deg 1 --only-make-z
 uvx maturin develop --manifest-path crates/pyrth-py/Cargo.toml
 .\.venv\Scripts\python.exe crates\pyrth-py\tests\smoke.py
