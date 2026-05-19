@@ -97,6 +97,8 @@ fn params_from_fixture(fixture: &GoldenFixture) -> EvaluationParams {
         min_index: params.min_index,
         timespec_interpolate_factor: params.timespec_interpolate_factor,
         blockwise_sum_width: params.blockwise_sum_width,
+        calc_struc: true,
+        only_make_z: false,
     }
 }
 
@@ -142,12 +144,42 @@ fn impedance_and_derivative_match_python_golden() {
 fn evaluate_fixture(fixture_name: &str) -> (GoldenFixture, pyrth_core::EvaluationResult) {
     let fixture = read_fixture(fixture_name);
     let params = params_from_fixture(&fixture);
+    evaluate_fixture_with_params(fixture, params)
+}
+
+fn evaluate_fixture_with_params(
+    fixture: GoldenFixture,
+    params: EvaluationParams,
+) -> (GoldenFixture, pyrth_core::EvaluationResult) {
     let input =
         TransientInput::from_pairs(fixture.input.data.iter().map(|pair| (pair[0], pair[1])))
             .unwrap();
 
     let result = evaluate(input, &params).unwrap();
     (fixture, result)
+}
+
+#[test]
+fn evaluation_flags_gate_pipeline_stages() {
+    let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
+    let mut params = params_from_fixture(&fixture);
+    params.only_make_z = true;
+    let (_, result) = evaluate_fixture_with_params(fixture, params);
+
+    assert!(result.derivative.is_none());
+    assert!(result.time_spectrum.is_none());
+    assert!(result.foster.is_none());
+    assert!(result.cauer.is_none());
+
+    let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
+    let mut params = params_from_fixture(&fixture);
+    params.calc_struc = false;
+    let (_, result) = evaluate_fixture_with_params(fixture, params);
+
+    assert!(result.derivative.is_some());
+    assert!(result.time_spectrum.is_some());
+    assert!(result.foster.is_some());
+    assert!(result.cauer.is_none());
 }
 
 fn assert_impedance_matches(

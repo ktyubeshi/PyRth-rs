@@ -53,16 +53,34 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
     }
 
     let impedance = make_impedance_data(input)?;
+    if params.only_make_z {
+        return Ok(EvaluationResult {
+            impedance,
+            derivative: None,
+            time_spectrum: None,
+            foster: None,
+            cauer: None,
+        });
+    }
+
     let derivative = z_fit_deriv(&impedance.impedance, &impedance.log_time, params)?;
     let time_spectrum = time_spectrum_bayesian(&derivative, params);
     let foster = foster_from_time_spectrum(&derivative.log_time_pad, &time_spectrum, 1e-10)?;
-    let cauer = cauer_from_foster_lanczos(&foster.capacitance, &foster.resistance, params);
+    let cauer = if params.calc_struc {
+        Some(cauer_from_foster_lanczos(
+            &foster.capacitance,
+            &foster.resistance,
+            params,
+        ))
+    } else {
+        None
+    };
 
     Ok(EvaluationResult {
         impedance,
         derivative: Some(derivative),
         time_spectrum: Some(time_spectrum),
         foster: Some(foster),
-        cauer: Some(cauer),
+        cauer,
     })
 }

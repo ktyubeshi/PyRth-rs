@@ -154,6 +154,8 @@ pub struct EvaluationParams {
     pub min_index: usize,
     pub timespec_interpolate_factor: f64,
     pub blockwise_sum_width: usize,
+    pub calc_struc: bool,
+    pub only_make_z: bool,
 }
 
 impl Default for EvaluationParams {
@@ -175,6 +177,8 @@ impl Default for EvaluationParams {
             min_index: 3,
             timespec_interpolate_factor: 1.0,
             blockwise_sum_width: 20,
+            calc_struc: true,
+            only_make_z: false,
         }
     }
 }
