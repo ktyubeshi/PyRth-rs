@@ -118,6 +118,8 @@ pub fn export_svg_figures(
         "impedance",
         result.impedance.time.iter().copied(),
         result.impedance.impedance.iter().copied(),
+        AxisScale::Log10,
+        AxisScale::Linear,
     )?;
 
     let mut files = ExportedFigureFiles {
@@ -134,6 +136,8 @@ pub fn export_svg_figures(
             "imp_deriv",
             derivative.log_time_pad.iter().map(|value| value.exp()),
             derivative.imp_deriv_interp.iter().copied(),
+            AxisScale::Log10,
+            AxisScale::Linear,
         )?;
         files.imp_deriv = Some(imp_deriv_path);
 
@@ -146,6 +150,8 @@ pub fn export_svg_figures(
                 "time_spec",
                 derivative.log_time_pad.iter().map(|value| value.exp()),
                 time_spectrum.iter().copied(),
+                AxisScale::Log10,
+                AxisScale::Linear,
             )?;
             files.time_spec = Some(time_spec_path);
         }
@@ -160,6 +166,8 @@ pub fn export_svg_figures(
             "capacitance",
             foster.resistance.iter().copied(),
             foster.capacitance.iter().copied(),
+            AxisScale::Linear,
+            AxisScale::Linear,
         )?;
         files.foster = Some(foster_path);
     }
@@ -173,6 +181,8 @@ pub fn export_svg_figures(
             "cumulative_capacitance",
             cauer.cumulative_resistance.iter().copied(),
             cauer.cumulative_capacitance.iter().copied(),
+            AxisScale::Linear,
+            AxisScale::Log10,
         )?;
         files.cauer = Some(cauer_path);
 
@@ -184,6 +194,8 @@ pub fn export_svg_figures(
             "differential_structure",
             cauer.cumulative_resistance.iter().copied(),
             cauer.differential_structure.iter().copied(),
+            AxisScale::Linear,
+            AxisScale::Log10,
         )?;
         files.diff_struc = Some(diff_struc_path);
     }
@@ -213,17 +225,56 @@ fn write_svg_series(
     y_label: &str,
     left: impl Iterator<Item = f64>,
     right: impl Iterator<Item = f64>,
+    x_scale: AxisScale,
+    y_scale: AxisScale,
 ) -> Result<()> {
     let points = left
         .zip(right)
         .filter(|(x, y)| x.is_finite() && y.is_finite())
         .collect::<Vec<_>>();
-    let svg = render_svg_series(title, x_label, y_label, &points);
+    let svg = render_svg_series(title, x_label, y_label, &points, x_scale, y_scale);
     fs::write(path, svg)?;
     Ok(())
 }
 
-fn render_svg_series(title: &str, x_label: &str, y_label: &str, points: &[(f64, f64)]) -> String {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AxisScale {
+    Linear,
+    Log10,
+}
+
+impl AxisScale {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Linear => "linear",
+            Self::Log10 => "log10",
+        }
+    }
+
+    fn transform(self, value: f64) -> Option<f64> {
+        match self {
+            Self::Linear => Some(value),
+            Self::Log10 if value > 0.0 => Some(value.log10()),
+            Self::Log10 => None,
+        }
+    }
+
+    fn inverse(self, value: f64) -> f64 {
+        match self {
+            Self::Linear => value,
+            Self::Log10 => 10.0_f64.powf(value),
+        }
+    }
+}
+
+fn render_svg_series(
+    title: &str,
+    x_label: &str,
+    y_label: &str,
+    points: &[(f64, f64)],
+    x_scale: AxisScale,
+    y_scale: AxisScale,
+) -> String {
     const WIDTH: f64 = 720.0;
     const HEIGHT: f64 = 420.0;
     const LEFT: f64 = 72.0;
@@ -233,7 +284,11 @@ fn render_svg_series(title: &str, x_label: &str, y_label: &str, points: &[(f64, 
 
     let plot_width = WIDTH - LEFT - RIGHT;
     let plot_height = HEIGHT - TOP - BOTTOM;
-    let (min_x, max_x, min_y, max_y) = bounds(points);
+    let points = points
+        .iter()
+        .filter_map(|(x, y)| Some((x_scale.transform(*x)?, y_scale.transform(*y)?)))
+        .collect::<Vec<_>>();
+    let (min_x, max_x, min_y, max_y) = bounds(&points);
     let polyline = points
         .iter()
         .map(|(x, y)| {
@@ -245,7 +300,7 @@ fn render_svg_series(title: &str, x_label: &str, y_label: &str, points: &[(f64, 
         .join(" ");
 
     format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH:.0} {HEIGHT:.0}" role="img">
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH:.0} {HEIGHT:.0}" role="img" data-x-scale="{}" data-y-scale="{}">
   <title>{}</title>
   <rect width="100%" height="100%" fill="#ffffff"/>
   <text x="{:.0}" y="24" font-family="sans-serif" font-size="18" fill="#111111">{}</text>
@@ -260,6 +315,8 @@ fn render_svg_series(title: &str, x_label: &str, y_label: &str, points: &[(f64, 
   <text x="62" y="{TOP:.0}" font-family="monospace" font-size="11" fill="#555555" text-anchor="end">{:.3e}</text>
 </svg>
 "##,
+        x_scale.label(),
+        y_scale.label(),
         escape_xml(title),
         LEFT,
         escape_xml(title),
@@ -275,13 +332,13 @@ fn render_svg_series(title: &str, x_label: &str, y_label: &str, points: &[(f64, 
         TOP + plot_height / 2.0,
         escape_xml(y_label),
         TOP + plot_height + 18.0,
-        min_x,
+        x_scale.inverse(min_x),
         LEFT + plot_width,
         TOP + plot_height + 18.0,
-        max_x,
+        x_scale.inverse(max_x),
         TOP + plot_height,
-        min_y,
-        max_y,
+        y_scale.inverse(min_y),
+        y_scale.inverse(max_y),
     )
 }
 

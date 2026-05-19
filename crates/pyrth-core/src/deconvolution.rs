@@ -165,7 +165,20 @@ fn time_spectrum_lasso_with_weights(
     params: &EvaluationParams,
     weights: Option<&Array1<f64>>,
 ) -> Array1<f64> {
-    let design = response_matrix(&derivative.log_time_pad);
+    let (design, target, coefficient_scale) =
+        if let Some((row_domain, target)) = impedance_domain_lasso_inputs(derivative) {
+            (
+                impedance_response_matrix(row_domain, &derivative.log_time_pad),
+                target,
+                1.0,
+            )
+        } else {
+            (
+                response_matrix(&derivative.log_time_pad),
+                &derivative.imp_deriv_interp,
+                derivative.log_time_delta,
+            )
+        };
     let (normalized_design, column_norms) = normalize_columns(&design);
     let weighted_design = match weights {
         Some(weights) => apply_column_weights(&normalized_design, weights),
@@ -173,7 +186,7 @@ fn time_spectrum_lasso_with_weights(
     };
     let normalized_coefficients = nonnegative_lasso_coordinate_descent(
         &weighted_design,
-        &derivative.imp_deriv_interp,
+        target,
         params.lasso_alpha,
         params.lasso_max_iter,
         params.lasso_tol,
@@ -188,7 +201,45 @@ fn time_spectrum_lasso_with_weights(
                 let weight = weights.map(|weights| weights[index]).unwrap_or(1.0);
                 coefficient / (norm * weight)
             }),
-    ) * derivative.log_time_delta
+    ) * coefficient_scale
+}
+
+fn impedance_domain_lasso_inputs(
+    derivative: &DerivativeResult,
+) -> Option<(&Array1<f64>, &Array1<f64>)> {
+    if derivative.log_time_interp.len() == derivative.imp_smooth.len()
+        && derivative
+            .imp_smooth
+            .iter()
+            .any(|value| value.is_finite() && *value > 0.0)
+    {
+        Some((&derivative.log_time_interp, &derivative.imp_smooth))
+    } else {
+        None
+    }
+}
+
+fn impedance_response_matrix(
+    row_log_time: &Array1<f64>,
+    column_log_tau: &Array1<f64>,
+) -> Array2<f64> {
+    let mut response = Array2::zeros((row_log_time.len(), column_log_tau.len()));
+    for row in 0..row_log_time.len() {
+        for col in 0..column_log_tau.len() {
+            response[(row, col)] = impedance_step_response(row_log_time[row] - column_log_tau[col]);
+        }
+    }
+    response
+}
+
+fn impedance_step_response(log_time_over_tau: f64) -> f64 {
+    if log_time_over_tau > 709.0 {
+        1.0
+    } else if log_time_over_tau < -36.0 {
+        log_time_over_tau.exp()
+    } else {
+        -(-log_time_over_tau.exp()).exp_m1()
+    }
 }
 
 fn adaptive_lasso_weights(prior: &Array1<f64>) -> Array1<f64> {

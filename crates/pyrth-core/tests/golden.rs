@@ -388,6 +388,38 @@ fn lasso_deconvolution_returns_sparse_time_spectrum() {
 }
 
 #[test]
+fn lasso_deconvolution_tracks_impedance_domain_smoothing() {
+    let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
+    let mut params = params_from_fixture(&fixture);
+    params.deconv_mode = DeconvMode::Lasso;
+    params.calc_struc = false;
+    params.log_time_size = 64;
+    params.lasso_alpha = 1e-5;
+    params.lasso_max_iter = 1000;
+    params.lasso_tol = 1e-5;
+
+    let (_, result) = evaluate_fixture_with_params(fixture, params);
+    let derivative = result.derivative.as_ref().unwrap();
+    let time_spectrum = result.time_spectrum.as_ref().unwrap();
+    let reconstructed = reconstruct_impedance_from_time_spectrum(
+        &derivative.log_time_interp,
+        &derivative.log_time_pad,
+        time_spectrum,
+    );
+
+    let model_rmse = rmse(&reconstructed, &derivative.imp_smooth);
+    let zero_rmse = rmse(
+        &Array1::zeros(derivative.imp_smooth.len()),
+        &derivative.imp_smooth,
+    );
+
+    assert!(
+        model_rmse < zero_rmse * 0.75,
+        "Lasso impedance-domain reconstruction is weak: model_rmse={model_rmse}, zero_rmse={zero_rmse}"
+    );
+}
+
+#[test]
 fn adaptive_deconvolution_returns_time_spectrum() {
     let fixture = read_fixture("mosfet_tim_bayesian_lanczos.json");
     let mut params = params_from_fixture(&fixture);
@@ -589,6 +621,8 @@ fn svg_export_writes_available_pipeline_figures() {
 
     let svg = fs::read_to_string(files.impedance).unwrap();
     assert!(svg.starts_with("<svg "));
+    assert!(svg.contains(r#"data-x-scale="log10""#));
+    assert!(svg.contains(r#"data-y-scale="linear""#));
     assert!(svg.contains("<polyline"));
     assert!(svg.contains("Thermal impedance"));
 }
@@ -927,6 +961,41 @@ fn max_rel_diff(actual: &[f64], expected: &[f64]) -> (usize, f64) {
         })
         .max_by(|(_, left), (_, right)| left.total_cmp(right))
         .unwrap_or((0, 0.0))
+}
+
+fn reconstruct_impedance_from_time_spectrum(
+    row_log_time: &Array1<f64>,
+    column_log_tau: &Array1<f64>,
+    time_spectrum: &Array1<f64>,
+) -> Array1<f64> {
+    Array1::from_iter(row_log_time.iter().map(|log_time| {
+        column_log_tau
+            .iter()
+            .zip(time_spectrum)
+            .map(|(log_tau, coefficient)| coefficient * impedance_step_response(log_time - log_tau))
+            .sum::<f64>()
+    }))
+}
+
+fn impedance_step_response(log_time_over_tau: f64) -> f64 {
+    if log_time_over_tau > 709.0 {
+        1.0
+    } else if log_time_over_tau < -36.0 {
+        log_time_over_tau.exp()
+    } else {
+        -(-log_time_over_tau.exp()).exp_m1()
+    }
+}
+
+fn rmse(actual: &Array1<f64>, expected: &Array1<f64>) -> f64 {
+    assert_eq!(actual.len(), expected.len(), "RMSE length mismatch");
+    (actual
+        .iter()
+        .zip(expected)
+        .map(|(actual, expected)| (actual - expected).powi(2))
+        .sum::<f64>()
+        / actual.len() as f64)
+        .sqrt()
 }
 
 fn assert_cauer_is_physical(fixture_name: &str, cauer: &pyrth_core::CauerNetwork) {
