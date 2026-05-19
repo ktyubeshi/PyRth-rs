@@ -59,6 +59,20 @@ pub fn evaluate(input: TransientInput, params: &EvaluationParams) -> Result<Eval
             actual: input.time.len().to_string(),
         });
     }
+    if !params.only_make_z && input.time.len() <= params.min_index {
+        return Err(PyrthError::InvalidParameter {
+            parameter: "min_index",
+            expected: "less than input sample count",
+            actual: params.min_index.to_string(),
+        });
+    }
+    if !params.only_make_z && input.time.len() < params.minimum_window_size {
+        return Err(PyrthError::InvalidParameter {
+            parameter: "minimum_window_size",
+            expected: "less than or equal to input sample count",
+            actual: params.minimum_window_size.to_string(),
+        });
+    }
 
     let impedance = make_impedance_data(input)?;
     if params.only_make_z {

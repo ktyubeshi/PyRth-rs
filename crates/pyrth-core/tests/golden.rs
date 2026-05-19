@@ -207,6 +207,17 @@ fn invalid_evaluation_params_return_errors() {
             ..
         }
     ));
+
+    let input = TransientInput::from_pairs([(1e-6, 0.1), (1e-5, 0.2), (1e-4, 0.3)]).unwrap();
+    let params = EvaluationParams::default();
+    let err = evaluate(input, &params).unwrap_err();
+    assert!(matches!(
+        err,
+        PyrthError::InvalidParameter {
+            parameter: "min_index",
+            ..
+        }
+    ));
 }
 
 #[test]
