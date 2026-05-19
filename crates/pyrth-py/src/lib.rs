@@ -199,8 +199,20 @@ impl PyStructureFunction {
 #[pyclass]
 struct Evaluation {
     last_result: RwLock<Option<pyrth_core::EvaluationResult>>,
-    modules: RwLock<HashMap<String, pyrth_core::EvaluationResult>>,
+    modules: RwLock<HashMap<String, EvaluationModule>>,
     module_counters: RwLock<HashMap<String, usize>>,
+}
+
+#[derive(Clone)]
+enum EvaluationModule {
+    Structure(pyrth_core::EvaluationResult),
+    TemperaturePrediction(TemperaturePredictionModule),
+}
+
+#[derive(Clone)]
+struct TemperaturePredictionModule {
+    time: Vec<f64>,
+    temperature: Vec<f64>,
 }
 
 #[pymethods]
@@ -314,7 +326,11 @@ impl Evaluation {
         py: Python<'_>,
         parameters: &Bound<'_, PyDict>,
     ) -> PyResult<PyObject> {
-        predict_temperature_response_from_parameters(py, parameters)
+        let prediction = predict_temperature_response_data_from_parameters(parameters)?;
+        if let Some(label) = extract_string(parameters, "label")? {
+            self.register_temperature_prediction_module(label, prediction.clone())?;
+        }
+        temperature_prediction_to_dict(py, prediction.time, prediction.temperature)
     }
 
     #[pyo3(signature = (reference, candidate=None))]
@@ -566,13 +582,21 @@ impl Evaluation {
             .get(label)
             .cloned()
             .ok_or_else(|| PyValueError::new_err(format!("module '{label}' was not found")))?;
-        Py::new(
-            py,
-            PyStructureFunction {
-                label: label.to_string(),
-                result,
-            },
-        )
+        match result {
+            EvaluationModule::Structure(result) => Py::new(
+                py,
+                PyStructureFunction {
+                    label: label.to_string(),
+                    result,
+                },
+            ),
+            EvaluationModule::TemperaturePrediction(result) => Err(PyValueError::new_err(
+                format!(
+                    "module '{label}' is a temperature_prediction result with {} samples, not a StructureFunction",
+                    result.time.len()
+                ),
+            )),
+        }
     }
 
     fn standard_module_sweep(
@@ -819,7 +843,10 @@ impl Evaluation {
             .read()
             .map_err(|_| PyValueError::new_err("failed to lock Evaluation modules"))?
             .clone();
-        if modules.is_empty() {
+        if !modules
+            .values()
+            .any(|module| matches!(module, EvaluationModule::Structure(_)))
+        {
             return Err(PyValueError::new_err(
                 "save_as_csv requires at least one previous standard_module, standard, or standard_module_set call",
             ));
@@ -832,6 +859,9 @@ impl Evaluation {
             let result = modules
                 .get(&label)
                 .ok_or_else(|| PyValueError::new_err("failed to read Evaluation module"))?;
+            let EvaluationModule::Structure(result) = result else {
+                continue;
+            };
             let module_output_dir = Path::new(output_dir).join(&label);
             let files = match export_kind {
                 ExportKind::Csv => {
@@ -874,7 +904,38 @@ impl Evaluation {
         self.modules
             .write()
             .map_err(|_| PyValueError::new_err("failed to lock Evaluation modules"))?
-            .insert(final_label.clone(), result);
+            .insert(final_label.clone(), EvaluationModule::Structure(result));
+        Ok(final_label)
+    }
+
+    fn register_temperature_prediction_module(
+        &self,
+        label: String,
+        result: TemperaturePredictionModule,
+    ) -> PyResult<String> {
+        let final_label = self.next_module_label(label)?;
+        self.modules
+            .write()
+            .map_err(|_| PyValueError::new_err("failed to lock Evaluation modules"))?
+            .insert(
+                final_label.clone(),
+                EvaluationModule::TemperaturePrediction(result),
+            );
+        Ok(final_label)
+    }
+
+    fn next_module_label(&self, label: String) -> PyResult<String> {
+        let mut counters = self
+            .module_counters
+            .write()
+            .map_err(|_| PyValueError::new_err("failed to lock Evaluation module counters"))?;
+        let counter = counters.entry(label.clone()).or_insert(0);
+        let final_label = if *counter == 0 {
+            label
+        } else {
+            format!("{label}_{counter}")
+        };
+        *counter += 1;
         Ok(final_label)
     }
 }
@@ -1510,6 +1571,13 @@ fn predict_temperature_response_from_parameters(
     py: Python<'_>,
     parameters: &Bound<'_, PyDict>,
 ) -> PyResult<PyObject> {
+    let prediction = predict_temperature_response_data_from_parameters(parameters)?;
+    temperature_prediction_to_dict(py, prediction.time, prediction.temperature)
+}
+
+fn predict_temperature_response_data_from_parameters(
+    parameters: &Bound<'_, PyDict>,
+) -> PyResult<TemperaturePredictionModule> {
     let power_data = require_first_pairs(parameters, &["power_data", "power"])?;
     let lin_sampling_period = extract_f64(parameters, "lin_sampling_period")?.unwrap_or(1.0);
 
@@ -1523,11 +1591,10 @@ fn predict_temperature_response_from_parameters(
         let result = pyrth_core::predict_temperature(input, power, &params, lin_sampling_period)
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
-        return temperature_prediction_to_dict(
-            py,
-            result.lin_time.to_vec(),
-            result.predicted_temperature.to_vec(),
-        );
+        return Ok(TemperaturePredictionModule {
+            time: result.lin_time.to_vec(),
+            temperature: result.predicted_temperature.to_vec(),
+        });
     }
 
     if parameters.get_item("data")?.is_some()
@@ -1544,11 +1611,10 @@ fn predict_temperature_response_from_parameters(
         )
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
-        return temperature_prediction_to_dict(
-            py,
-            result.lin_time.to_vec(),
-            result.predicted_temperature.to_vec(),
-        );
+        return Ok(TemperaturePredictionModule {
+            time: result.lin_time.to_vec(),
+            temperature: result.predicted_temperature.to_vec(),
+        });
     }
 
     if let Some(impulse_response) = extract_first_pairs(parameters, &["data"])? {
@@ -1561,11 +1627,10 @@ fn predict_temperature_response_from_parameters(
         let result = pyrth_core::predict_temperature(input, power, &params, lin_sampling_period)
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
-        return temperature_prediction_to_dict(
-            py,
-            result.lin_time.to_vec(),
-            result.predicted_temperature.to_vec(),
-        );
+        return Ok(TemperaturePredictionModule {
+            time: result.lin_time.to_vec(),
+            temperature: result.predicted_temperature.to_vec(),
+        });
     }
 
     let reference_time = require_first_vec_f64(parameters, &["reference_time"])?;
@@ -1604,11 +1669,10 @@ fn predict_temperature_response_from_parameters(
     }
     .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
-    temperature_prediction_to_dict(
-        py,
-        result.lin_time.to_vec(),
-        result.predicted_temperature.to_vec(),
-    )
+    Ok(TemperaturePredictionModule {
+        time: result.lin_time.to_vec(),
+        temperature: result.predicted_temperature.to_vec(),
+    })
 }
 
 fn temperature_prediction_to_dict(

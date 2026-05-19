@@ -433,6 +433,8 @@ def main() -> None:
     assert len(predicted["time"]) > 0
     assert all(math.isfinite(value) for value in predicted["temperature"])
 
+    labels_before_prediction = evaluation.module_labels()
+    count_before_prediction = evaluation.module_count()
     predicted_facade = evaluation.temperature_prediction(
         {
             "impulse_response": list(
@@ -446,6 +448,26 @@ def main() -> None:
     assert len(predicted_facade["time"]) == len(predicted_facade["temperature"])
     assert len(predicted_facade["time"]) > 0
     assert all(math.isfinite(value) for value in predicted_facade["temperature"])
+    assert evaluation.module_count() == count_before_prediction
+    assert evaluation.module_labels() == labels_before_prediction
+
+    predicted_labeled = evaluation.temperature_prediction(
+        {
+            "impulse_response": list(
+                zip(prediction_input["time"], prediction_input["impedance"])
+            ),
+            "power_data": [(0.0, 0.0), (0.02, 1.0), (0.04, 0.5)],
+            "lin_sampling_period": 1e-3,
+            "label": "temperature_prediction_smoke",
+        }
+    )
+    assert sorted(predicted_labeled) == ["temperature", "time"]
+    assert_close_list(predicted_labeled["time"], predicted_facade["time"])
+    assert_close_list(predicted_labeled["temperature"], predicted_facade["temperature"])
+    labels_after_prediction = evaluation.module_labels()
+    assert "temperature_prediction_smoke" in labels_after_prediction
+    assert evaluation.module_count() == count_before_prediction + 1
+    assert evaluation.module_count() == len(labels_after_prediction)
 
     predicted_from_rc = evaluation.temperature_prediction(
         {
