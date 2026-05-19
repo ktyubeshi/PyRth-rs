@@ -149,6 +149,8 @@ Goal:
 - PyO3 `comparison_module` now covers standard-evaluation sweeps against
   generated theoretical impedance inputs.  Bootstrap and optimization
   comparison modes remain separate work.
+- PyO3 `save_as_csv` exports every registered standard-evaluation module into
+  per-label output directories.
 
 ### H. Theoretical Bootstrap
 

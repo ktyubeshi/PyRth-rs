@@ -106,7 +106,8 @@ implementation remains the reference implementation.
   - `Evaluation().module_labels()` and `Evaluation().module_count()` for the
     current minimal module registry, including duplicate-label suffixing
   - `Evaluation().save_as_csv(output_dir="output/csv")` and `save_all(...)`
-    for the last standard-evaluation result through the core CSV exporter
+    export all registered standard-evaluation modules through the core CSV
+    exporter into per-label subdirectories
   - `Evaluation().theoretical({...})`, `Evaluation().bootstrap({...})`,
     `Evaluation().optimization({...})`, and
     `Evaluation().temperature_prediction({...})` as dict-parameter facades
@@ -181,9 +182,9 @@ Lanczos Cauer coverage currently checks:
   `StructureFunction` objects.  The current compatibility layer exposes the
   high-level `Evaluation` methods as dict-parameter facades, but it does not
   preserve Python object attributes or `data_handlers`.  `Evaluation` now keeps
-  a minimal label-to-result module registry and the last standard-evaluation
-  result for `save_as_csv(...)`, but that is only a first CSV-export
-  compatibility slice.
+  a minimal label-to-result module registry and exports registered modules via
+  `save_as_csv(...)`, but figure export and object attribute parity are still
+  missing.
 - Adaptive deconvolution is a minimal deterministic sparse implementation, not
   full Python adaptive parity.
 - MPFR structure methods and full Python optimization parity are only partly
