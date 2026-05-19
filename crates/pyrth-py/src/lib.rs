@@ -275,9 +275,12 @@ impl Evaluation {
     ) -> PyResult<PyObject> {
         let evaluation_type = extract_string(parameters, "evaluation_type")?
             .ok_or_else(|| PyValueError::new_err("evaluation_type is required"))?;
+        if evaluation_type.eq_ignore_ascii_case("optimization") {
+            return self.comparison_module_optimization(py, parameters);
+        }
         if !evaluation_type.eq_ignore_ascii_case("standard") {
             return Err(PyValueError::new_err(
-                "comparison_module currently supports evaluation_type='standard' only",
+                "comparison_module currently supports evaluation_type='standard' or 'optimization' only",
             ));
         }
         let base_label = extract_string(parameters, "label")?
@@ -541,6 +544,87 @@ impl Evaluation {
         }
 
         Ok(PyList::new(py, modules)?.into())
+    }
+
+    fn comparison_module_optimization(
+        &self,
+        py: Python<'_>,
+        parameters: &Bound<'_, PyDict>,
+    ) -> PyResult<PyObject> {
+        let base_label = extract_string(parameters, "label")?
+            .ok_or_else(|| PyValueError::new_err("label is required"))?;
+        let iterable_keywords = require_string_list(parameters, "iterable_keywords")?;
+        if iterable_keywords.is_empty() {
+            return Err(PyValueError::new_err(
+                "iterable_keywords must contain at least one key",
+            ));
+        }
+
+        let input = if let Some(data) = extract_pairs(parameters, "data")? {
+            pyrth_core::TransientInput::from_pairs(data)
+                .map_err(|err| PyValueError::new_err(err.to_string()))?
+        } else {
+            theoretical_input_from_parameters(parameters)?
+        };
+        let data = transient_input_to_pairs(&input);
+
+        let mut iterables = Vec::with_capacity(iterable_keywords.len());
+        for keyword in &iterable_keywords {
+            iterables.push(require_object_list(parameters, keyword)?);
+        }
+        let set_len = iterables[0].len();
+        if iterables.iter().any(|items| items.len() != set_len) {
+            return Err(PyValueError::new_err(
+                "Iterables do not have the same length",
+            ));
+        }
+
+        let reference_parameters = comparison_variant_parameters(
+            py,
+            parameters,
+            &iterable_keywords,
+            &iterables,
+            0,
+            &data,
+            format!("{base_label}_reference"),
+        )?;
+        let reference = optimization_result_from_parameters(&reference_parameters)?;
+
+        let mut time_const_comparison = Vec::with_capacity(set_len);
+        let mut structure_comparison = Vec::with_capacity(set_len);
+        let mut total_resist_diff = Vec::with_capacity(set_len);
+        for index in 0..set_len {
+            let candidate_parameters = comparison_variant_parameters(
+                py,
+                parameters,
+                &iterable_keywords,
+                &iterables,
+                index,
+                &data,
+                format!("{base_label}_{}", index),
+            )?;
+            let candidate = optimization_result_from_parameters(&candidate_parameters)?;
+            time_const_comparison
+                .push(optimization_impedance_norm(&input, &reference, &candidate)?);
+            structure_comparison.push(0.0);
+            total_resist_diff.push(
+                (reference.parameters.resistance.iter().sum::<f64>()
+                    - candidate.parameters.resistance.iter().sum::<f64>())
+                .abs(),
+            );
+        }
+
+        let mod_values = iterables[0]
+            .iter()
+            .map(|value| value.clone_ref(py))
+            .collect::<Vec<_>>();
+        let output = PyDict::new(py);
+        output.set_item("time_const_comparison", time_const_comparison)?;
+        output.set_item("structure_comparison", structure_comparison)?;
+        output.set_item("total_resist_diff", total_resist_diff)?;
+        output.set_item("mod_key_display_name", iterable_keywords.join("_"))?;
+        output.set_item("mod_value_list", PyList::new(py, mod_values)?)?;
+        Ok(output.into())
     }
 
     #[pyo3(signature = (output_dir="output/csv"))]
@@ -1072,6 +1156,23 @@ fn optimization_result_to_dict(
     output.set_item("residual_norm", result.residual_norm)?;
     output.set_item("iterations", result.iterations)?;
     Ok(output.into())
+}
+
+fn optimization_impedance_norm(
+    input: &pyrth_core::TransientInput,
+    reference: &pyrth_core::OptimizationResult,
+    candidate: &pyrth_core::OptimizationResult,
+) -> PyResult<f64> {
+    let reference_impedance = reference
+        .parameters
+        .impedance_on(&input.time)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let candidate_impedance = candidate
+        .parameters
+        .impedance_on(&input.time)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    pyrth_core::relative_l2_norm(&reference_impedance, &candidate_impedance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))
 }
 
 #[pyfunction]

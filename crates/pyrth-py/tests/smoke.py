@@ -334,6 +334,42 @@ def main() -> None:
     assert optimized_facade["iterations"] > 0
     assert math.isfinite(optimized_facade["residual_norm"])
 
+    optimization_comparison = evaluation.comparison_module(
+        {
+            "data": list(zip(target["time"], target["impedance"])),
+            "evaluation_type": "optimization",
+            "label": "optimization_comparison",
+            "iterable_keywords": ["initial_step"],
+            "initial_step": [0.25, 0.125],
+            "initial_resistance": [0.75, 3.5],
+            "initial_capacitance": [0.65, 1.5],
+            "lower_resistance": [0.5, 2.0],
+            "lower_capacitance": [0.2, 1.0],
+            "upper_resistance": [1.5, 4.0],
+            "upper_capacitance": [1.0, 3.0],
+            "max_iter": 4,
+            "min_step": 1e-3,
+        }
+    )
+    assert sorted(optimization_comparison) == [
+        "mod_key_display_name",
+        "mod_value_list",
+        "structure_comparison",
+        "time_const_comparison",
+        "total_resist_diff",
+    ]
+    assert optimization_comparison["mod_key_display_name"] == "initial_step"
+    assert optimization_comparison["mod_value_list"] == [0.25, 0.125]
+    assert optimization_comparison["time_const_comparison"][0] == 0.0
+    assert optimization_comparison["structure_comparison"] == [0.0, 0.0]
+    assert all(
+        math.isfinite(value)
+        for value in optimization_comparison["time_const_comparison"]
+    )
+    assert all(
+        math.isfinite(value) for value in optimization_comparison["total_resist_diff"]
+    )
+
     prediction_input = pyrth_py.theoretical_impedance([1.0], [0.5], 1e-6, 1e-2, 80)
     predicted = pyrth_py.predict_temperature_response(
         list(zip(prediction_input["time"], prediction_input["impedance"])),
