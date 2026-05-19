@@ -60,6 +60,8 @@ implementation remains the reference implementation.
   - `foster.svg`
   - `cauer.svg`
   - `diff_struc.svg`
+  - simple linear/log axis scaling aligned with the matching Python figure
+    families
 - Evaluation gates:
   - `only_make_z`
   - `calc_struc`
@@ -137,7 +139,8 @@ implementation remains the reference implementation.
     over the module-level PyO3 helpers; temperature prediction accepts explicit
     impulse responses, Foster RC arrays, optimization result dicts, or
     optimization parameter dictionaries that are solved internally before
-    prediction
+    prediction, and labeled temperature-prediction calls are tracked in the
+    module registry
   - `Evaluation().bootstrap({...})` accepts Python-style theoretical aliases
     (`theo_resistances`, `theo_capacitances`, `theo_time`,
     `theo_time_size`) plus `signal_to_noise_ratio` and `random_seed`
@@ -228,8 +231,8 @@ Lanczos Cauer coverage currently checks:
   Bayesian prior spectrum as clipped Lasso column weights.  It is still not full
   Python adaptive parity because the Rust Lasso solver is deterministic
   coordinate descent rather than scikit-learn `Lasso`/`LassoCV`, and the current
-  Lasso path still works in the derivative-response basis rather than the full
-  Python impedance-domain design matrix.
+  impedance-domain design matrix fits the smoothed derivative grid rather than
+  Python's raw input-time grid and cross-validated tau range.
 - MPFR structure methods and full Python optimization parity are only partly
   ported.  With the non-default `mpfr` Cargo feature, `polylong` now routes
   through a `rug::Float` Foster rational/poly-long conversion using
@@ -250,9 +253,10 @@ Lanczos Cauer coverage currently checks:
   bookkeeping and exporter/figure integration.
 - Temperature prediction core and PyO3 helpers now support explicit impulse
   responses, Foster RC parameters, optimization-result dictionaries, and a
-  minimal internal optimization path from RC optimization parameters.  Remaining
-  parity work is around the broader Python orchestration layer and its module
-  bookkeeping/export behavior.
+  minimal internal optimization path from RC optimization parameters.  Labeled
+  PyO3 temperature-prediction calls now participate in module bookkeeping.
+  Remaining parity work is around broader Python export behavior for
+  non-structure modules and orchestration details.
 - The next implementation work is split into non-overlapping `jj` slices in
   `docs/rust-port/parallel-plan.md`.
 

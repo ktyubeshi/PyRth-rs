@@ -96,7 +96,9 @@ Goal:
 
 Status: Lasso is implemented in core with deterministic non-negative coordinate
 descent.  Adaptive mode reuses the deterministic sparse solver with Python-style
-Bayesian prior column weights.
+Bayesian prior column weights.  The Lasso design matrix now uses an
+impedance-domain step-response basis when the smoothed impedance grid is
+available, with a derivative-response fallback.
 
 Owned paths:
 
@@ -109,15 +111,16 @@ Goal:
 
 - Provide deterministic sparse deconvolution paths without pulling in a
   scikit-learn equivalent.
-- Continue by moving Lasso/adaptive closer to Python's impedance-domain design
-  matrix and optional cross-validation behavior.
+- Continue by moving Lasso/adaptive from the smoothed derivative grid toward
+  Python's raw input-time design matrix and optional cross-validation behavior.
 
 ### F. Theoretical And Prediction
 
 Status: theoretical RC impedance generation, standard temperature prediction,
 reusable RC/optimization-result temperature prediction helpers, and the matching
 PyO3 facades are implemented.  The PyO3 temperature prediction facade can also
-run the current RC optimization helper internally before prediction.
+run the current RC optimization helper internally before prediction, and labeled
+temperature-prediction calls are registered in the module bookkeeping layer.
 
 Owned paths:
 
@@ -130,7 +133,7 @@ Goal:
 
 - Build the foundation for comparison, bootstrap-from-theoretical, and
   temperature prediction workflows.  The remaining work is full Python-style
-  orchestration and module bookkeeping around these helpers.
+  orchestration and export behavior around non-structure modules.
 
 ### G. Comparison Metrics
 
@@ -158,6 +161,8 @@ Goal:
   now returns both CSV and figure path dictionaries.
 - CLI `--figures-output` writes the same simple SVG figures next to the
   existing CSV output path when requested.
+- Core SVG export now records and applies simple linear/log axis scales for the
+  matching Python figure families.
 - PyO3 standard-evaluation methods now return minimal `StructureFunction`
   objects with dict-like read access rather than bare dictionaries.
 - PyO3 `StructureFunction` also exposes common Python-style array aliases for
