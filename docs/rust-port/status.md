@@ -36,8 +36,13 @@ implementation remains the reference implementation.
   - `--log-time-size`
   - `--bay-steps`
   - `--blockwise-sum-width`
+  - `--min-index`
+  - `--minimum-window-size`
 - Minimal PyO3 entrypoint:
   - `evaluate_impedance(data, only_make_z=False, calc_struc=True)`
+  - `Evaluation().standard_module({"data": ...})`
+  - `standard_module` accepts `only_make_z`, `calc_struc`, `log_time_size`,
+    `bay_steps`, and `blockwise_sum_width`
 
 ## Golden Coverage
 
@@ -66,6 +71,8 @@ Lanczos Cauer coverage currently checks:
 - PyO3 does not yet expose the existing Python `Evaluation().standard_module`
   compatibility facade.
 - CLI only supports direct two-column impedance input.
+- PyO3 only accepts direct two-column impedance input and returns plain Python
+  dictionaries rather than existing Python `StructureFunction` objects.
 - Fourier, Lasso, adaptive, MPFR structure methods, optimization, bootstrap,
   comparison, and temperature prediction are not ported.
 
@@ -76,4 +83,7 @@ uv run --python 3.12 --with-editable . python tests/golden/generate_golden.py
 uv run --python 3.12 --with-editable . --with pytest pytest tests/cases/test_standard_module.py -k MOSFET_tim_basic_lanczos
 cargo test
 cargo run -p pyrth-cli -- --input target\tmp\cli-input.csv --output target\tmp\cli-smoke --only-make-z
+cargo run -p pyrth-cli -- --input target\tmp\cli-input.csv --output target\tmp\cli-full-small --log-time-size 10 --bay-steps 2 --min-index 1 --minimum-window-size 2 --no-structure
+uvx maturin develop --manifest-path crates/pyrth-py/Cargo.toml
+.\.venv\Scripts\python.exe crates\pyrth-py\tests\smoke.py
 ```
