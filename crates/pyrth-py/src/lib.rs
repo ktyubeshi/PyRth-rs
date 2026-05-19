@@ -105,14 +105,19 @@ impl Evaluation {
         predict_temperature_response(py, impulse_response, power_data, lin_sampling_period)
     }
 
+    #[pyo3(signature = (reference, candidate=None))]
     fn comparison(
         &self,
         py: Python<'_>,
         reference: &Bound<'_, PyDict>,
-        candidate: &Bound<'_, PyDict>,
+        candidate: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyObject> {
-        let reference = evaluation_result_from_result_or_params(py, self, reference)?;
-        let candidate = evaluation_result_from_result_or_params(py, self, candidate)?;
+        let (reference, candidate) = match candidate {
+            Some(candidate) => (reference.clone(), candidate.clone()),
+            None => comparison_inputs_from_wrapper(reference)?,
+        };
+        let reference = evaluation_result_from_result_or_params(py, self, &reference)?;
+        let candidate = evaluation_result_from_result_or_params(py, self, &candidate)?;
         let result = pyrth_core::compare_evaluations(&reference, &candidate)
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
@@ -284,6 +289,23 @@ fn extract_first_string(parameters: &Bound<'_, PyDict>, keys: &[&str]) -> PyResu
         }
     }
     Ok(None)
+}
+
+fn comparison_inputs_from_wrapper<'py>(
+    parameters: &Bound<'py, PyDict>,
+) -> PyResult<(Bound<'py, PyDict>, Bound<'py, PyDict>)> {
+    let reference = require_first_dict(
+        parameters,
+        &["reference", "reference_result", "reference_parameters"],
+        "comparison requires either (reference, candidate) arguments or one dict with reference and candidate",
+    )?;
+    let candidate = require_first_dict(
+        parameters,
+        &["candidate", "candidate_result", "candidate_parameters"],
+        "comparison requires either (reference, candidate) arguments or one dict with reference and candidate",
+    )?;
+
+    Ok((reference, candidate))
 }
 
 #[pyfunction]
@@ -905,6 +927,26 @@ fn require_first_usize(parameters: &Bound<'_, PyDict>, keys: &[&str]) -> PyResul
     }
     Err(PyValueError::new_err(format!(
         "{} is required",
+        keys.join(" or ")
+    )))
+}
+
+fn require_first_dict<'py>(
+    parameters: &Bound<'py, PyDict>,
+    keys: &[&str],
+    missing_message: &str,
+) -> PyResult<Bound<'py, PyDict>> {
+    for key in keys {
+        if let Some(value) = parameters.get_item(key)? {
+            return value
+                .downcast::<PyDict>()
+                .cloned()
+                .map_err(|err| PyValueError::new_err(format!("{key} must be a dict: {err}")));
+        }
+    }
+
+    Err(PyValueError::new_err(format!(
+        "{missing_message}; missing {}",
         keys.join(" or ")
     )))
 }

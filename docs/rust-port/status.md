@@ -103,7 +103,9 @@ implementation remains the reference implementation.
     `Evaluation().temperature_prediction({...})` as dict-parameter facades
     over the module-level PyO3 helpers
   - `Evaluation().comparison(reference, candidate)` for two PyO3 result dicts
-    or two standard-evaluation parameter dicts
+    or two standard-evaluation parameter dicts; it also accepts
+    `Evaluation().comparison({"reference": ..., "candidate": ...})` as a thin
+    dict-parameter facade
   - `Evaluation().standard_module({...})` with `input_mode="t3ster"` and
     `infile`/`infile_pwr`/`infile_tco` or `input`/`t3ster_power`/
     `t3ster_calibration`
@@ -145,14 +147,24 @@ Lanczos Cauer coverage currently checks:
 
 ## Known Gaps
 
-- Lanczos Cauer full-array golden equality is not yet achieved.  Initial
-  Lanczos steps match Python closely, but long recurrence drift changes the
-  stopping point and therefore the blockwise output length.
+- Lanczos Cauer full-array golden equality is not yet achieved.  Python and
+  Rust use the same initial `g`, `r`, `beta`, `v`, first `alpha`, and
+  `cap_sum < 1e4` stopping condition, and Rust's blockwise aggregation matches
+  Python's `np.add.reduceat` tail handling.  The remaining drift comes from the
+  long recurrence in `lanczos_inner`: with full-array assertions enabled,
+  MOSFET TIM currently stops at a different blockwise length than Python
+  (`3639` Rust blocks versus `3202` Python blocks).  Replacing `powf(2.0)` with
+  multiplication, matching the residual expression order, and trying
+  `ndarray::dot` reduce the drift but still do not reproduce NumPy/Numba's
+  dot-product rounding order, so changing the production recurrence is not yet
+  safe.
 - LED derivative golden equality is not enabled.  Its small-window settings
   hit near-ties in the adaptive estimator and currently diverge by window
   selection in a few positions.
 - PyO3 returns plain Python dictionaries rather than existing Python
-  `StructureFunction` objects.
+  `StructureFunction` objects.  The current compatibility layer exposes the
+  high-level `Evaluation` methods as dict-parameter facades, but it does not
+  preserve Python object attributes, `data_handlers`, labels, or exporter hooks.
 - Adaptive deconvolution is a minimal deterministic sparse implementation, not
   full Python adaptive parity.
 - MPFR structure methods and full Python optimization parity are only partly
@@ -160,8 +172,10 @@ Lanczos Cauer coverage currently checks:
   through a `rug::Float` Foster rational/poly-long conversion using
   `EvaluationParams.precision`; without that feature it remains unsupported.
   `sobhy`, `khatwani`, and `boor_golub` are still unsupported.
-- Bootstrap and comparison currently cover core numerical helpers only; the
-  wider Python module orchestration and exporter parity are not ported.
+- Bootstrap and comparison currently cover core numerical helpers and thin
+  `Evaluation` dict facades only.  They do not port Python's wider
+  `bootstrap_*`/`comparison_module` orchestration, iterable module-set handling,
+  result module registration, or exporter parity.
 - Temperature prediction currently supports standard-evaluation impulse
   responses only; optimization-based prediction is not ported.
 - The next implementation work is split into non-overlapping `jj` slices in

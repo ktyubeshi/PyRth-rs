@@ -219,6 +219,19 @@ def main() -> None:
     assert comparison["structure_norm"] == 0.0
     assert comparison["total_resistance_diff"] == 0.0
 
+    comparison_facade = evaluation.comparison(
+        {"reference": lasso_module, "candidate": lasso_module}
+    )
+    assert comparison_facade == comparison
+
+    try:
+        evaluation.comparison({"reference": lasso_module})
+    except ValueError as exc:
+        assert "reference and candidate" in str(exc)
+        assert "candidate" in str(exc)
+    else:
+        raise AssertionError("comparison without candidate should raise ValueError")
+
     temp_module = evaluation.standard_module(
         {
             "data": TEMP_DATA,
