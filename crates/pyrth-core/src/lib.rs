@@ -20,7 +20,7 @@ pub mod preprocess;
 pub mod t3ster;
 pub mod theoretical;
 
-pub use bootstrap::{bootstrap_from_theoretical, BootstrapResult};
+pub use bootstrap::{bootstrap_from_impedance_data, bootstrap_from_theoretical, BootstrapResult};
 pub use comparison::{compare_evaluations, ComparisonResult};
 pub use config::{DeconvMode, EvaluationParams, FourierFilter, InputMode, StructureMethod};
 pub use data::{ImpedanceData, TransientInput};

@@ -3,7 +3,7 @@ use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::{Distribution, Normal};
 
 use crate::{
-    config::EvaluationParams,
+    config::{EvaluationParams, InputMode},
     data::TransientInput,
     error::{PyrthError, Result},
     evaluation::evaluate,
@@ -33,6 +33,36 @@ pub fn bootstrap_from_theoretical(
     params: &EvaluationParams,
     seed: u64,
 ) -> Result<BootstrapResult> {
+    let base = model.to_transient_input(time_start, time_end, time_size)?;
+    bootstrap_from_input(&base, repetitions, noise_std, params, seed)
+}
+
+pub fn bootstrap_from_impedance_data(
+    input: &TransientInput,
+    repetitions: usize,
+    noise_std: f64,
+    params: &EvaluationParams,
+    seed: u64,
+) -> Result<BootstrapResult> {
+    input.validate()?;
+    if params.input_mode != InputMode::Impedance {
+        return Err(PyrthError::InvalidParameter {
+            parameter: "input_mode",
+            expected: "impedance for bootstrap_from_impedance_data",
+            actual: params.input_mode.to_string(),
+        });
+    }
+
+    bootstrap_from_input(input, repetitions, noise_std, params, seed)
+}
+
+fn bootstrap_from_input(
+    base: &TransientInput,
+    repetitions: usize,
+    noise_std: f64,
+    params: &EvaluationParams,
+    seed: u64,
+) -> Result<BootstrapResult> {
     if repetitions == 0 {
         return Err(PyrthError::InvalidParameter {
             parameter: "repetitions",
@@ -48,7 +78,6 @@ pub fn bootstrap_from_theoretical(
         });
     }
 
-    let base = model.to_transient_input(time_start, time_end, time_size)?;
     let normal = if noise_std > 0.0 {
         Some(
             Normal::new(0.0, noise_std).map_err(|err| PyrthError::InvalidParameter {
