@@ -242,15 +242,15 @@ impl Evaluation {
     }
 
     fn theoretical(&self, py: Python<'_>, parameters: &Bound<'_, PyDict>) -> PyResult<PyObject> {
-        let resistance =
-            require_first_vec_f64(parameters, &["resistance", "theoretical_resistance"])?;
-        let capacitance =
-            require_first_vec_f64(parameters, &["capacitance", "theoretical_capacitance"])?;
-        let time_start = require_first_f64(parameters, &["time_start"])?;
-        let time_end = require_first_f64(parameters, &["time_end"])?;
-        let time_size = require_first_usize(parameters, &["time_size"])?;
+        self.theoretical_module(py, parameters)
+    }
 
-        theoretical_impedance(py, resistance, capacitance, time_start, time_end, time_size)
+    fn theoretical_module(
+        &self,
+        py: Python<'_>,
+        parameters: &Bound<'_, PyDict>,
+    ) -> PyResult<PyObject> {
+        theoretical_module_from_parameters(py, parameters)
     }
 
     fn bootstrap(&self, py: Python<'_>, parameters: &Bound<'_, PyDict>) -> PyResult<PyObject> {
@@ -469,7 +469,7 @@ impl Evaluation {
         let data_cut_lower = extract_usize(parameters, "data_cut_lower")?;
         let data_cut_upper = extract_usize(parameters, "data_cut_upper")?;
         let temp_0_avg_range = extract_usize_pair(parameters, "temp_0_avg_range")?;
-        let extrapolate = extract_bool(parameters, "extrapolate")?.unwrap_or(false);
+        let extrapolate = extract_bool(parameters, "extrapolate")?;
         let lower_fit_limit = extract_f64(parameters, "lower_fit_limit")?;
         let upper_fit_limit = extract_f64(parameters, "upper_fit_limit")?;
         let structure_method =
@@ -1090,19 +1090,25 @@ fn theoretical_input_from_parameters(
             "theo_capacitances",
         ],
     )?;
-    let (time_start, time_end) = theoretical_time_range(parameters)?;
+    let (time_start, time_end) = theoretical_time_range_or_default(parameters)?;
     let time_size = extract_usize(parameters, "time_size")?
         .or(extract_usize(parameters, "theo_time_size")?)
         .ok_or_else(|| PyValueError::new_err("time_size or theo_time_size is required"))?;
 
-    pyrth_core::theoretical_impedance_input(
+    let delta = extract_f64(parameters, "theo_delta")?
+        .or(extract_f64(parameters, "delta")?)
+        .unwrap_or(std::f64::consts::PI / 360.0);
+    let result = pyrth_core::theoretical_module(
         &resistance,
         &capacitance,
         time_start,
         time_end,
         time_size,
+        delta,
     )
-    .map_err(|err| PyValueError::new_err(err.to_string()))
+    .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    pyrth_core::TransientInput::new(result.log_time.mapv(f64::exp), result.impedance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))
 }
 
 fn theoretical_time_range(parameters: &Bound<'_, PyDict>) -> PyResult<(f64, f64)> {
@@ -1119,6 +1125,20 @@ fn theoretical_time_range(parameters: &Bound<'_, PyDict>) -> PyResult<(f64, f64)
         require_first_f64(parameters, &["time_start"])?,
         require_first_f64(parameters, &["time_end"])?,
     ))
+}
+
+fn theoretical_time_range_or_default(parameters: &Bound<'_, PyDict>) -> PyResult<(f64, f64)> {
+    if let Some(theo_time) = extract_vec_f64(parameters, "theo_time")? {
+        if theo_time.len() != 2 {
+            return Err(PyValueError::new_err(
+                "theo_time must contain exactly two values",
+            ));
+        }
+        return Ok((theo_time[0], theo_time[1]));
+    }
+    let time_start = extract_f64(parameters, "time_start")?;
+    let time_end = extract_f64(parameters, "time_end")?;
+    Ok((time_start.unwrap_or(4e-8), time_end.unwrap_or(1e3)))
 }
 
 fn bootstrap_noise_std(
@@ -1138,7 +1158,7 @@ fn bootstrap_noise_std(
             "signal_to_noise_ratio must be finite and greater than zero",
         ));
     }
-    let input = pyrth_core::theoretical_impedance_input(
+    let input = pyrth_core::foster_step_response_input(
         resistance,
         capacitance,
         time_start,
@@ -1246,7 +1266,7 @@ fn bootstrap_result_from_parameters(
             "theo_capacitances",
         ],
     )?;
-    let (time_start, time_end) = theoretical_time_range(parameters)?;
+    let (time_start, time_end) = theoretical_time_range_or_default(parameters)?;
     let time_size = extract_usize(parameters, "time_size")?
         .or(extract_usize(parameters, "theo_time_size")?)
         .ok_or_else(|| PyValueError::new_err("time_size or theo_time_size is required"))?;
@@ -1258,10 +1278,10 @@ fn bootstrap_result_from_parameters(
         time_end,
         time_size,
     )?;
-    let model = pyrth_core::TheoreticalModel::from_slices(&resistance, &capacitance)
+    let model = pyrth_core::FosterStepResponseModel::from_slices(&resistance, &capacitance)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
-    pyrth_core::bootstrap_from_theoretical(
+    pyrth_core::bootstrap_from_foster_step_response(
         &model,
         time_start,
         time_end,
@@ -1353,11 +1373,67 @@ fn evaluate_impedance(
             data_cut_lower: None,
             data_cut_upper: None,
             temp_0_avg_range: None,
-            extrapolate: false,
+            extrapolate: None,
             lower_fit_limit: None,
             upper_fit_limit: None,
         },
     )
+}
+
+fn theoretical_module_from_parameters(
+    py: Python<'_>,
+    parameters: &Bound<'_, PyDict>,
+) -> PyResult<PyObject> {
+    let resistance = require_first_vec_f64(
+        parameters,
+        &["theo_resistances", "resistance", "theoretical_resistance"],
+    )?;
+    let capacitance = require_first_vec_f64(
+        parameters,
+        &[
+            "theo_capacitances",
+            "capacitance",
+            "theoretical_capacitance",
+        ],
+    )?;
+    let (time_start, time_end) = theoretical_time_range_or_default(parameters)?;
+    let time_size = extract_usize(parameters, "theo_time_size")?
+        .or(extract_usize(parameters, "time_size")?)
+        .unwrap_or(30000);
+    let delta = extract_f64(parameters, "theo_delta")?
+        .or(extract_f64(parameters, "delta")?)
+        .unwrap_or(std::f64::consts::PI / 360.0);
+    let result = pyrth_core::theoretical_module(
+        &resistance,
+        &capacitance,
+        time_start,
+        time_end,
+        time_size,
+        delta,
+    )
+    .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    theoretical_structure_result_to_dict(py, result)
+}
+
+#[pyfunction]
+fn foster_step_response(
+    py: Python<'_>,
+    resistance: Vec<f64>,
+    capacitance: Vec<f64>,
+    time_start: f64,
+    time_end: f64,
+    time_size: usize,
+) -> PyResult<PyObject> {
+    let model = pyrth_core::FosterStepResponseModel::from_slices(&resistance, &capacitance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let input = model
+        .to_transient_input(time_start, time_end, time_size)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let output = PyDict::new(py);
+    output.set_item("time", input.time.to_vec())?;
+    output.set_item("impedance", input.value.to_vec())?;
+    Ok(output.into())
 }
 
 #[pyfunction]
@@ -1369,16 +1445,7 @@ fn theoretical_impedance(
     time_end: f64,
     time_size: usize,
 ) -> PyResult<PyObject> {
-    let model = pyrth_core::TheoreticalModel::from_slices(&resistance, &capacitance)
-        .map_err(|err| PyValueError::new_err(err.to_string()))?;
-    let input = model
-        .to_transient_input(time_start, time_end, time_size)
-        .map_err(|err| PyValueError::new_err(err.to_string()))?;
-
-    let output = PyDict::new(py);
-    output.set_item("time", input.time.to_vec())?;
-    output.set_item("impedance", input.value.to_vec())?;
-    Ok(output.into())
+    foster_step_response(py, resistance, capacitance, time_start, time_end, time_size)
 }
 
 #[pyfunction]
@@ -1394,11 +1461,11 @@ fn bootstrap_theoretical(
     noise_std: f64,
     seed: u64,
 ) -> PyResult<PyObject> {
-    let model = pyrth_core::TheoreticalModel::from_slices(&resistance, &capacitance)
+    let model = pyrth_core::FosterStepResponseModel::from_slices(&resistance, &capacitance)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
     let mut params = pyrth_core::EvaluationParams::default();
     params.calc_struc = false;
-    let result = pyrth_core::bootstrap_from_theoretical(
+    let result = pyrth_core::bootstrap_from_foster_step_response(
         &model,
         time_start,
         time_end,
@@ -1842,7 +1909,7 @@ struct EvalOverrides {
     data_cut_lower: Option<usize>,
     data_cut_upper: Option<usize>,
     temp_0_avg_range: Option<(usize, usize)>,
-    extrapolate: bool,
+    extrapolate: Option<bool>,
     lower_fit_limit: Option<f64>,
     upper_fit_limit: Option<f64>,
 }
@@ -2002,7 +2069,7 @@ fn evaluate_result_with_input(
     input: pyrth_core::TransientInput,
     overrides: EvalOverrides,
 ) -> PyResult<pyrth_core::EvaluationResult> {
-    let mut params = pyrth_core::EvaluationParams::default();
+    let mut params = pyrth_core::EvaluationParams::python_compatible();
     if let Some(input_mode) = overrides.input_mode {
         params.input_mode = pyrth_core::InputMode::from_label(&input_mode)
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
@@ -2100,7 +2167,9 @@ fn evaluate_result_with_input(
     if let Some(temp_0_avg_range) = overrides.temp_0_avg_range {
         params.temp_0_avg_range = temp_0_avg_range;
     }
-    params.extrapolate = overrides.extrapolate;
+    if let Some(extrapolate) = overrides.extrapolate {
+        params.extrapolate = extrapolate;
+    }
     params.lower_fit_limit = overrides.lower_fit_limit;
     params.upper_fit_limit = overrides.upper_fit_limit;
 
@@ -2170,6 +2239,23 @@ fn evaluation_result_to_dict(
         output.set_item("diff_struc", cauer.differential_structure.to_vec())?;
     }
 
+    Ok(output.into())
+}
+
+fn theoretical_structure_result_to_dict(
+    py: Python<'_>,
+    result: pyrth_core::TheoreticalStructureResult,
+) -> PyResult<PyObject> {
+    let output = PyDict::new(py);
+    output.set_item("theo_log_time", result.log_time.to_vec())?;
+    output.set_item("theo_int_cau_res", result.cumulative_resistance.to_vec())?;
+    output.set_item("theo_int_cau_cap", result.cumulative_capacitance.to_vec())?;
+    output.set_item("theo_diff_struc", result.differential_structure.to_vec())?;
+    output.set_item("theo_time_const", result.time_const_spectrum.to_vec())?;
+    output.set_item("theo_imp_deriv", result.impedance_derivative.to_vec())?;
+    output.set_item("theo_impedance", result.impedance.to_vec())?;
+    output.set_item("time", result.log_time.mapv(f64::exp).to_vec())?;
+    output.set_item("impedance", result.impedance.to_vec())?;
     Ok(output.into())
 }
 
@@ -2318,6 +2404,7 @@ fn pyrth_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Evaluation>()?;
     m.add_class::<PyStructureFunction>()?;
     m.add_function(wrap_pyfunction!(evaluate_impedance, m)?)?;
+    m.add_function(wrap_pyfunction!(foster_step_response, m)?)?;
     m.add_function(wrap_pyfunction!(theoretical_impedance, m)?)?;
     m.add_function(wrap_pyfunction!(bootstrap_theoretical, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_rc, m)?)?;

@@ -1,86 +1,155 @@
-use approx::assert_relative_eq;
-use pyrth_core::{theoretical_impedance_input, PyrthError, TheoreticalModel};
+use approx::{assert_abs_diff_eq, assert_relative_eq};
+use ndarray::Array1;
+use pyrth_core::{structure_params_to_func, theoretical_module, time_const_to_impedance};
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct TheoreticalFixture {
+    params: TheoreticalFixtureParams,
+    theo_log_time: Vec<f64>,
+    theo_int_cau_res: Vec<f64>,
+    theo_int_cau_cap: Vec<f64>,
+    theo_diff_struc: Vec<f64>,
+    theo_time_const: Vec<f64>,
+    theo_imp_deriv: Vec<f64>,
+    theo_impedance: Vec<f64>,
+}
+
+#[derive(Deserialize)]
+struct TheoreticalFixtureParams {
+    theo_time: [f64; 2],
+    theo_time_size: usize,
+    theo_delta: f64,
+    theo_resistances: Vec<f64>,
+    theo_capacitances: Vec<f64>,
+}
 
 #[test]
-fn single_rc_matches_known_impedance_values() {
-    let input = theoretical_impedance_input(&[2.0], &[3.0], 1.0, 6.0, 2).unwrap();
+fn structure_params_to_func_preserves_section_boundaries() {
+    let resistances = Array1::from(vec![0.1, 0.2, 0.3]);
+    let capacitances = Array1::from(vec![1e-9, 1e-8, 1e-7]);
 
-    assert_relative_eq!(
-        input.value[0],
-        2.0 * (1.0_f64 - (-1.0_f64 / 6.0_f64).exp()),
-        epsilon = 1e-14
+    let (res, cap) = structure_params_to_func(6, &resistances, &capacitances).unwrap();
+
+    assert_eq!(res[0], 0.0);
+    assert_relative_eq!(res[res.len() - 1], 0.6, epsilon = 1e-14);
+    assert!(res.iter().any(|value| (*value - 0.1).abs() < 1e-14));
+    assert!(res.iter().any(|value| (*value - 0.3).abs() < 1e-14));
+    assert_eq!(res.len(), 8);
+    assert_relative_eq!(cap[0], 0.0, epsilon = 1e-20);
+    assert_relative_eq!(cap[cap.len() - 1], 1.11e-7, epsilon = 1e-20);
+}
+
+#[test]
+fn theoretical_module_returns_python_compatible_keys_lengths() {
+    let result = theoretical_module(
+        &[0.1, 0.2, 0.3],
+        &[1e-9, 1e-8, 1e-7],
+        5e-16,
+        0.02,
+        1000,
+        std::f64::consts::PI / 90.0,
+    )
+    .unwrap();
+
+    assert_eq!(result.log_time.len(), 1000);
+    assert_eq!(result.time_const_spectrum.len(), 1000);
+    assert_eq!(result.impedance_derivative.len(), 1000);
+    assert_eq!(result.impedance.len(), 1000);
+    assert_eq!(result.cumulative_resistance.len(), 1001);
+    assert_eq!(result.cumulative_capacitance.len(), 1001);
+    assert_eq!(result.differential_structure.len(), 1000);
+    assert!(result
+        .time_const_spectrum
+        .iter()
+        .all(|value| value.is_finite()));
+    assert!(result
+        .impedance_derivative
+        .iter()
+        .all(|value| value.is_finite()));
+    assert!(result.impedance.iter().all(|value| value.is_finite()));
+    assert_abs_diff_eq!(result.impedance[0], 0.0, epsilon = 1e-14);
+}
+
+#[test]
+fn theoretical_module_matches_python_generated_basic_fixture() {
+    let fixture: TheoreticalFixture =
+        serde_json::from_str(include_str!("fixtures/theoretical_case_basic.json")).unwrap();
+    let result = theoretical_module(
+        &fixture.params.theo_resistances,
+        &fixture.params.theo_capacitances,
+        fixture.params.theo_time[0],
+        fixture.params.theo_time[1],
+        fixture.params.theo_time_size,
+        fixture.params.theo_delta,
+    )
+    .unwrap();
+
+    assert_vec_close(
+        &result.log_time.to_vec(),
+        &fixture.theo_log_time,
+        1e-14,
+        1e-14,
     );
-    assert_relative_eq!(
-        input.value[1],
-        2.0 * (1.0_f64 - (-1.0_f64).exp()),
-        epsilon = 1e-14
+    assert_vec_close(
+        &result.cumulative_resistance.to_vec(),
+        &fixture.theo_int_cau_res,
+        1e-12,
+        1e-14,
+    );
+    assert_vec_close(
+        &result.cumulative_capacitance.to_vec(),
+        &fixture.theo_int_cau_cap,
+        1e-12,
+        1e-14,
+    );
+    assert_vec_close(
+        &result.differential_structure.to_vec(),
+        &fixture.theo_diff_struc,
+        1e-12,
+        1e-14,
+    );
+    assert_vec_close(
+        &result.time_const_spectrum.to_vec(),
+        &fixture.theo_time_const,
+        1e-8,
+        1e-12,
+    );
+    assert_vec_close(
+        &result.impedance_derivative.to_vec(),
+        &fixture.theo_imp_deriv,
+        1e-8,
+        1e-12,
+    );
+    assert_vec_close(
+        &result.impedance.to_vec(),
+        &fixture.theo_impedance,
+        1e-8,
+        1e-12,
     );
 }
 
 #[test]
-fn multiple_rc_impedance_is_monotonic() {
-    let input =
-        theoretical_impedance_input(&[1.0, 3.0, 5.0], &[0.5, 2.0, 4.0], 1e-3, 1e3, 128).unwrap();
+fn time_const_to_impedance_uses_python_weight_slice() {
+    let log_time = Array1::linspace(-2.0, 2.0, 5);
+    let time_const = Array1::from(vec![0.0, 1.0, 2.0, 1.0, 0.0]);
 
-    assert_eq!(input.time.len(), 128);
-    assert!(input
-        .time
-        .windows(2)
-        .into_iter()
-        .all(|pair| pair[0] < pair[1]));
-    assert!(input
-        .value
-        .windows(2)
-        .into_iter()
-        .all(|pair| pair[0] <= pair[1]));
-    assert!(input.value[input.value.len() - 1] <= 9.0);
+    let (deriv, impedance) = time_const_to_impedance(&log_time, &time_const).unwrap();
+
+    assert_eq!(deriv.len(), 5);
+    assert_eq!(impedance.len(), 5);
+    assert_abs_diff_eq!(impedance[0], 0.0);
+    assert!(deriv.iter().all(|value| value.is_finite()));
+    assert!(impedance.iter().all(|value| value.is_finite()));
 }
 
-#[test]
-fn invalid_input_is_rejected() {
-    assert!(matches!(
-        theoretical_impedance_input(&[], &[], 1e-6, 1.0, 16),
-        Err(PyrthError::EmptyInput)
-    ));
-    assert!(matches!(
-        theoretical_impedance_input(&[1.0], &[1.0, 2.0], 1e-6, 1.0, 16),
-        Err(PyrthError::LengthMismatch { .. })
-    ));
-    assert!(matches!(
-        theoretical_impedance_input(&[0.0], &[1.0], 1e-6, 1.0, 16),
-        Err(PyrthError::InvalidParameter {
-            parameter: "resistances",
-            ..
-        })
-    ));
-    assert!(matches!(
-        theoretical_impedance_input(&[1.0], &[-1.0], 1e-6, 1.0, 16),
-        Err(PyrthError::InvalidParameter {
-            parameter: "capacitances",
-            ..
-        })
-    ));
-    assert!(matches!(
-        theoretical_impedance_input(&[1.0], &[1.0], 1.0, 1.0, 16),
-        Err(PyrthError::InvalidParameter {
-            parameter: "time_range",
-            ..
-        })
-    ));
-    assert!(matches!(
-        theoretical_impedance_input(&[1.0], &[1.0], 1e-6, 1.0, 1),
-        Err(PyrthError::InvalidParameter {
-            parameter: "time_size",
-            ..
-        })
-    ));
-}
-
-#[test]
-fn model_can_evaluate_individual_time_points() {
-    let model = TheoreticalModel::from_slices(&[2.0, 4.0], &[3.0, 5.0]).unwrap();
-    let expected = 2.0 * (1.0_f64 - (-1.0_f64 / 6.0_f64).exp())
-        + 4.0 * (1.0_f64 - (-1.0_f64 / 20.0_f64).exp());
-
-    assert_relative_eq!(model.impedance_at(1.0), expected, epsilon = 1e-14);
+fn assert_vec_close(actual: &[f64], expected: &[f64], rtol: f64, atol: f64) {
+    assert_eq!(actual.len(), expected.len());
+    for (index, (actual, expected)) in actual.iter().zip(expected.iter()).enumerate() {
+        let tolerance = atol + rtol * expected.abs();
+        assert!(
+            (actual - expected).abs() <= tolerance,
+            "index {index}: actual={actual}, expected={expected}, tolerance={tolerance}"
+        );
+    }
 }

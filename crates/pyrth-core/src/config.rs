@@ -286,6 +286,19 @@ impl Default for EvaluationParams {
     }
 }
 
+impl EvaluationParams {
+    pub fn rust_default() -> Self {
+        Self::default()
+    }
+
+    pub fn python_compatible() -> Self {
+        let mut params = Self::default();
+        params.structure_method = StructureMethod::Sobhy;
+        params.extrapolate = true;
+        params
+    }
+}
+
 fn normalize_label(value: &str) -> String {
     value.trim().to_ascii_lowercase().replace('-', "_")
 }

@@ -7,7 +7,7 @@ use crate::{
     data::TransientInput,
     error::{PyrthError, Result},
     evaluation::evaluate,
-    theoretical::TheoreticalModel,
+    foster_step::FosterStepResponseModel,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -23,8 +23,8 @@ pub struct BootstrapResult {
     pub successful_repetitions: usize,
 }
 
-pub fn bootstrap_from_theoretical(
-    model: &TheoreticalModel,
+pub fn bootstrap_from_foster_step_response(
+    model: &FosterStepResponseModel,
     time_start: f64,
     time_end: f64,
     time_size: usize,
@@ -35,6 +35,29 @@ pub fn bootstrap_from_theoretical(
 ) -> Result<BootstrapResult> {
     let base = model.to_transient_input(time_start, time_end, time_size)?;
     bootstrap_from_input(&base, repetitions, noise_std, params, seed)
+}
+
+#[deprecated(note = "Use bootstrap_from_foster_step_response for Foster step response data.")]
+pub fn bootstrap_from_theoretical(
+    model: &FosterStepResponseModel,
+    time_start: f64,
+    time_end: f64,
+    time_size: usize,
+    repetitions: usize,
+    noise_std: f64,
+    params: &EvaluationParams,
+    seed: u64,
+) -> Result<BootstrapResult> {
+    bootstrap_from_foster_step_response(
+        model,
+        time_start,
+        time_end,
+        time_size,
+        repetitions,
+        noise_std,
+        params,
+        seed,
+    )
 }
 
 pub fn bootstrap_from_impedance_data(

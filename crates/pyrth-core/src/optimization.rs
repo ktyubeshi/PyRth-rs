@@ -4,7 +4,7 @@ use crate::{
     data::TransientInput,
     error::{PyrthError, Result},
     evaluation::{EvaluationResult, FosterNetwork},
-    theoretical::TheoreticalModel,
+    foster_step::FosterStepResponseModel,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -83,9 +83,14 @@ impl RcParameters {
         Ok(Array1::from(values))
     }
 
-    pub fn to_theoretical_model(&self) -> Result<TheoreticalModel> {
+    pub fn to_foster_step_response_model(&self) -> Result<FosterStepResponseModel> {
         self.validate()?;
-        TheoreticalModel::new(self.resistance.clone(), self.capacitance.clone())
+        FosterStepResponseModel::new(self.resistance.clone(), self.capacitance.clone())
+    }
+
+    #[deprecated(note = "Use to_foster_step_response_model for the Foster lumped RC model.")]
+    pub fn to_theoretical_model(&self) -> Result<FosterStepResponseModel> {
+        self.to_foster_step_response_model()
     }
 
     pub fn impedance_at(&self, time: f64) -> Result<f64> {
@@ -97,7 +102,7 @@ impl RcParameters {
             });
         }
 
-        Ok(self.to_theoretical_model()?.impedance_at(time))
+        self.to_foster_step_response_model()?.step_response_at(time)
     }
 
     pub fn impedance_on(&self, time: &Array1<f64>) -> Result<Array1<f64>> {
@@ -112,8 +117,7 @@ impl RcParameters {
             });
         }
 
-        let model = self.to_theoretical_model()?;
-        Ok(time.mapv(|sample_time| model.impedance_at(sample_time)))
+        self.to_foster_step_response_model()?.step_response_on(time)
     }
 }
 
@@ -363,7 +367,10 @@ pub fn relative_l2_norm(reference: &Array1<f64>, candidate: &Array1<f64>) -> Res
     Ok(squared_diff.sqrt() / squared_reference.sqrt())
 }
 
-pub fn impedance_residual_norm(input: &TransientInput, model: &TheoreticalModel) -> Result<f64> {
+pub fn impedance_residual_norm(
+    input: &TransientInput,
+    model: &FosterStepResponseModel,
+) -> Result<f64> {
     input.validate()?;
     let parameters = RcParameters::new(model.resistances.clone(), model.capacitances.clone())?;
 
@@ -431,6 +438,6 @@ fn clamp_array(values: &Array1<f64>, lower: &Array1<f64>, upper: &Array1<f64>) -
 }
 
 fn residual_for_parameters(input: &TransientInput, parameters: &RcParameters) -> Result<f64> {
-    let model = parameters.to_theoretical_model()?;
+    let model = parameters.to_foster_step_response_model()?;
     impedance_residual_norm(input, &model)
 }

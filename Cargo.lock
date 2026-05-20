@@ -299,6 +299,7 @@ dependencies = [
  "approx",
  "csv",
  "ndarray",
+ "num-complex",
  "rand",
  "rand_distr",
  "rug",

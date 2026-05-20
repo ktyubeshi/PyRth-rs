@@ -29,8 +29,8 @@ fn from_temperature(input: TransientInput, params: &EvaluationParams) -> Result<
     let (time, temperature, t_zero) = if params.extrapolate {
         extrapolate_temperature(input.time, input.value, params)?
     } else {
+        let t_zero = average_range(&input.value, params.temp_0_avg_range, "temp_0_avg_range")?;
         let (time, temperature) = cut_and_shift(input.time, input.value, params)?;
-        let t_zero = average_range(&temperature, params.temp_0_avg_range, "temp_0_avg_range")?;
         (time, temperature, t_zero)
     };
     let impedance = tmp_to_z(&temperature, t_zero, params)?;

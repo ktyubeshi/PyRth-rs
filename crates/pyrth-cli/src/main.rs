@@ -9,8 +9,8 @@ use std::{
 use pyrth_core::{
     evaluate, export_csv, export_svg_figures, parse_t3ster_calibration_text,
     parse_t3ster_power_step, parse_t3ster_raw_text, t3ster_raw_to_temperature_input,
-    theoretical_impedance_input, DeconvMode, EvaluationParams, FourierFilter, InputMode,
-    StructureMethod, TransientInput,
+    theoretical_module, DeconvMode, EvaluationParams, FourierFilter, InputMode, StructureMethod,
+    TransientInput,
 };
 
 fn main() {
@@ -474,7 +474,7 @@ fn validate_theoretical_args(
 }
 
 fn build_theoretical_input(args: &CliArgs) -> Result<TransientInput, Box<dyn Error>> {
-    theoretical_impedance_input(
+    let result = theoretical_module(
         args.theoretical_resistance
             .as_deref()
             .ok_or("missing --theoretical-resistance")?,
@@ -484,8 +484,9 @@ fn build_theoretical_input(args: &CliArgs) -> Result<TransientInput, Box<dyn Err
         args.time_start.ok_or("missing --time-start")?,
         args.time_end.ok_or("missing --time-end")?,
         args.time_size.ok_or("missing --time-size")?,
-    )
-    .map_err(Into::into)
+        std::f64::consts::PI / 360.0,
+    )?;
+    TransientInput::new(result.log_time.mapv(f64::exp), result.impedance).map_err(Into::into)
 }
 
 fn read_two_column_data(path: &Path) -> Result<TransientInput, Box<dyn Error>> {

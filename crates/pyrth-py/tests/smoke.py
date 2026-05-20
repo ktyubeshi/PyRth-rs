@@ -218,22 +218,26 @@ def main() -> None:
     assert lasso_object.cau_res is None
     assert "therm_resist_fost" in lasso_object.keys()
 
-    theoretical = pyrth_py.theoretical_impedance([1.0, 2.0], [0.5, 1.5], 1e-6, 1e-2, 8)
-    assert sorted(theoretical) == ["impedance", "time"]
-    assert len(theoretical["time"]) == 8
-    assert all(math.isfinite(value) for value in theoretical["impedance"])
+    foster = pyrth_py.foster_step_response([1.0, 2.0], [0.5, 1.5], 1e-6, 1e-2, 8)
+    assert sorted(foster) == ["impedance", "time"]
+    assert len(foster["time"]) == 8
+    assert all(math.isfinite(value) for value in foster["impedance"])
 
     theoretical_facade = evaluation.theoretical(
         {
-            "resistance": [1.0, 2.0],
-            "capacitance": [0.5, 1.5],
-            "time_start": 1e-6,
-            "time_end": 1e-2,
-            "time_size": 8,
+            "theo_resistances": [1.0, 2.0],
+            "theo_capacitances": [0.5, 1.5],
+            "theo_time": [1e-6, 1e-2],
+            "theo_time_size": 8,
         }
     )
-    assert sorted(theoretical_facade) == ["impedance", "time"]
+    assert "theo_time_const" in theoretical_facade
+    assert "theo_imp_deriv" in theoretical_facade
+    assert "theo_impedance" in theoretical_facade
     assert len(theoretical_facade["time"]) == 8
+    assert len(theoretical_facade["theo_time_const"]) == 8
+    assert len(theoretical_facade["theo_imp_deriv"]) == 8
+    assert len(theoretical_facade["theo_impedance"]) == 8
     assert all(math.isfinite(value) for value in theoretical_facade["impedance"])
 
     bootstrap = pyrth_py.bootstrap_theoretical(
@@ -342,7 +346,7 @@ def main() -> None:
     )
     assert all(math.isfinite(value) for value in bootstrap_comparison["total_resist_diff"])
 
-    target = pyrth_py.theoretical_impedance([1.0, 3.0], [0.4, 2.0], 1e-3, 1e2, 32)
+    target = pyrth_py.foster_step_response([1.0, 3.0], [0.4, 2.0], 1e-3, 1e2, 32)
     optimized = pyrth_py.optimize_rc(
         list(zip(target["time"], target["impedance"])),
         [0.75, 3.5],
@@ -422,7 +426,7 @@ def main() -> None:
         math.isfinite(value) for value in optimization_comparison["total_resist_diff"]
     )
 
-    prediction_input = pyrth_py.theoretical_impedance([1.0], [0.5], 1e-6, 1e-2, 80)
+    prediction_input = pyrth_py.foster_step_response([1.0], [0.5], 1e-6, 1e-2, 80)
     predicted = pyrth_py.predict_temperature_response(
         list(zip(prediction_input["time"], prediction_input["impedance"])),
         [(0.0, 0.0), (0.02, 1.0), (0.04, 0.5)],

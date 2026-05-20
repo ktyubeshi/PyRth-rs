@@ -31,7 +31,13 @@ implementation remains the reference implementation.
   - Foster network conversion
   - Lanczos Cauer conversion
 - Theoretical helpers:
-  - Foster RC arrays to theoretical impedance input
+  - Python-compatible `theoretical_module` for piecewise-uniform RC
+    transmission-line sections, including `structure_params_to_func`,
+    `structure_to_time_const`, and `time_const_to_impedance`
+  - Foster lumped RC step response is exposed separately as
+    `FosterStepResponseModel` / `foster_step_response_input`; deprecated
+    root aliases exist only for migration and are not Python theoretical
+    parity
   - validated Foster RC optimization helper parameters, flattening, bounds
     checks, and impedance residual norms
   - deterministic bounded coordinate-search solver for Foster RC parameters
@@ -39,8 +45,8 @@ implementation remains the reference implementation.
   - reusable temperature prediction helpers from explicit impulse responses,
     Foster RC parameters, and optimization results
   - comparison metrics for two evaluated results
-  - deterministic bootstrap means and 10/50/90 percentile bands from
-    theoretical RC models
+  - deterministic bootstrap means and 10/50/90 percentile bands from Foster
+    step-response models
   - deterministic bootstrap means and 10/50/90 percentile bands from existing
     impedance inputs
 - T3Ster text helpers:
@@ -104,8 +110,10 @@ implementation remains the reference implementation.
   - `--figures-output`
 - Minimal PyO3 entrypoint:
   - `evaluate_impedance(data, only_make_z=False, calc_struc=True)`
-  - `theoretical_impedance(resistance, capacitance, time_start, time_end,
-    time_size)`
+  - `foster_step_response(resistance, capacitance, time_start, time_end,
+    time_size)` for the lumped Foster helper
+  - `theoretical_impedance(...)` remains as a migration alias for the Foster
+    helper; new code should not treat it as Python `theoretical_module`
   - `bootstrap_theoretical(resistance, capacitance, time_start, time_end,
     time_size, repetitions, noise_std, seed=0)`
   - `optimize_rc(data, initial_resistance, initial_capacitance,
@@ -135,7 +143,12 @@ implementation remains the reference implementation.
     `save_figures(output_dir="output/figures")`, and `save_all(...)` export
     all registered standard-evaluation modules through the core CSV/SVG
     exporters into per-label subdirectories
-  - `Evaluation().theoretical({...})`, `Evaluation().bootstrap({...})`,
+  - `Evaluation().theoretical_module({...})` and
+    `Evaluation().theoretical({...})` return Python-compatible theoretical
+    keys (`theo_log_time`, `theo_int_cau_res`, `theo_int_cau_cap`,
+    `theo_diff_struc`, `theo_time_const`, `theo_imp_deriv`,
+    `theo_impedance`) plus `time`/`impedance` aliases
+  - `Evaluation().bootstrap({...})`,
     `Evaluation().optimization({...})`, and
     `Evaluation().temperature_prediction({...})` as dict-parameter facades
     over the module-level PyO3 helpers; temperature prediction accepts explicit
@@ -175,6 +188,13 @@ implementation remains the reference implementation.
     `data_cut_upper`, `temp_0_avg_range`, `extrapolate`,
     `lower_fit_limit`, and `upper_fit_limit`
   - `calib` as a Python-compatible alias for voltage `calibration`
+  - Python-compatible API defaults intentionally follow Python defaults:
+    `EvaluationParams::python_compatible()` uses `struc_method="sobhy"` and
+    `extrapolate=true`. Rust core `Default` may remain
+    implementation-oriented, but the PyO3 facade must not silently substitute
+    different algorithms. Without the `mpfr` feature, default Sobhy structure
+    calculation returns an explicit unsupported-method error unless callers
+    choose another method.
 
 ## Golden Coverage
 
@@ -186,13 +206,15 @@ Strict golden comparisons currently cover:
 - Foster network resistance/capacitance for MOSFET TIM and MOSFET dry
 - Lasso smoke coverage for finite, non-negative sparse spectrum
 - Adaptive smoke coverage for finite, non-negative sparse spectrum
-- theoretical single/multiple RC impedance generation
+- Foster step-response single/multiple RC generation
+- Python-generated `theoretical_case_basic` fixture for theoretical structure
+  arrays, time-constant spectrum, impedance derivative, and impedance
 - standard temperature prediction finite output
 - Foster RC and optimization-result temperature prediction helper behavior
 - comparison metric behavior for spectra, structure functions, and resistance
 - optimization helper validation, flatten/unflatten, bounds, and theoretical
   impedance residuals, including bounded coordinate-search improvement checks
-- deterministic theoretical bootstrap means and percentile bands
+- deterministic Foster step-response bootstrap means and percentile bands
 
 Lanczos Cauer coverage currently checks:
 
@@ -259,6 +281,9 @@ Lanczos Cauer coverage currently checks:
   `comparison_module` support for standard, bootstrap, and optimization
   sweeps.  Remaining comparison parity work is around broader Python module
   bookkeeping and exporter/figure integration.
+- CLI `--theoretical-*` now feeds the Python-compatible theoretical module.
+  A dedicated Foster-named CLI surface is still missing for users who want the
+  lumped Foster step-response helper from the command line.
 - Temperature prediction core and PyO3 helpers now support explicit impulse
   responses, Foster RC parameters, optimization-result dictionaries, and a
   minimal internal optimization path from RC optimization parameters.  Labeled

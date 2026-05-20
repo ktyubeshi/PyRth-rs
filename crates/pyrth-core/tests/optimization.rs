@@ -2,8 +2,8 @@ use approx::assert_relative_eq;
 use ndarray::array;
 use pyrth_core::{
     impedance_residual_norm, optimize_rc_parameters, relative_l2_norm, EvaluationResult,
-    FosterNetwork, ImpedanceData, OptimizationConfig, PyrthError, RcParameterBounds, RcParameters,
-    TheoreticalModel,
+    FosterNetwork, FosterStepResponseModel, ImpedanceData, OptimizationConfig, PyrthError,
+    RcParameterBounds, RcParameters,
 };
 
 fn foster_result(resistance: Vec<f64>, capacitance: Vec<f64>) -> EvaluationResult {
@@ -101,7 +101,7 @@ fn relative_l2_norm_matches_known_value() {
 
 #[test]
 fn impedance_residual_is_zero_for_matching_theoretical_model() {
-    let model = TheoreticalModel::from_slices(&[2.0, 4.0], &[3.0, 5.0]).unwrap();
+    let model = FosterStepResponseModel::from_slices(&[2.0, 4.0], &[3.0, 5.0]).unwrap();
     let input = model.to_transient_input(1e-3, 1e3, 64).unwrap();
     let residual = impedance_residual_norm(&input, &model).unwrap();
 
@@ -110,7 +110,7 @@ fn impedance_residual_is_zero_for_matching_theoretical_model() {
 
 #[test]
 fn optimize_rc_parameters_improves_shifted_initial_guess() {
-    let model = TheoreticalModel::from_slices(&[1.0, 3.0], &[0.4, 2.0]).unwrap();
+    let model = FosterStepResponseModel::from_slices(&[1.0, 3.0], &[0.4, 2.0]).unwrap();
     let input = model.to_transient_input(1e-3, 1e2, 48).unwrap();
     let initial = RcParameters::from_slices(&[0.75, 3.5], &[0.65, 1.5]).unwrap();
     let lower = RcParameters::from_slices(&[0.5, 2.0], &[0.2, 1.0]).unwrap();
@@ -123,7 +123,7 @@ fn optimize_rc_parameters_improves_shifted_initial_guess() {
         shrink_factor: 0.5,
     };
     let initial_residual =
-        impedance_residual_norm(&input, &initial.to_theoretical_model().unwrap()).unwrap();
+        impedance_residual_norm(&input, &initial.to_foster_step_response_model().unwrap()).unwrap();
 
     let result = optimize_rc_parameters(&input, &initial, &bounds, config).unwrap();
 
@@ -133,7 +133,7 @@ fn optimize_rc_parameters_improves_shifted_initial_guess() {
 
 #[test]
 fn optimize_rc_parameters_clamps_result_to_bounds() {
-    let model = TheoreticalModel::from_slices(&[1.0, 3.0], &[0.4, 2.0]).unwrap();
+    let model = FosterStepResponseModel::from_slices(&[1.0, 3.0], &[0.4, 2.0]).unwrap();
     let input = model.to_transient_input(1e-3, 1e2, 32).unwrap();
     let initial = RcParameters::from_slices(&[0.1, 10.0], &[0.1, 10.0]).unwrap();
     let lower = RcParameters::from_slices(&[0.5, 2.0], &[0.2, 1.0]).unwrap();
@@ -158,7 +158,7 @@ fn optimize_rc_parameters_clamps_result_to_bounds() {
 
 #[test]
 fn optimize_rc_parameters_rejects_invalid_config() {
-    let model = TheoreticalModel::from_slices(&[1.0], &[0.4]).unwrap();
+    let model = FosterStepResponseModel::from_slices(&[1.0], &[0.4]).unwrap();
     let input = model.to_transient_input(1e-3, 1e1, 16).unwrap();
     let initial = RcParameters::from_slices(&[1.0], &[0.4]).unwrap();
     let lower = RcParameters::from_slices(&[0.5], &[0.2]).unwrap();

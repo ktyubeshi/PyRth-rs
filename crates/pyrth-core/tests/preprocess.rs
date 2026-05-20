@@ -52,7 +52,33 @@ fn temperature_extrapolation_requires_fit_limits() {
 }
 
 #[test]
-fn temperature_default_keeps_existing_cut_and_average_path() {
+fn temperature_zero_average_range_uses_raw_indices_before_cut() {
+    let input = TransientInput::from_pairs([
+        (1.0, 100.0),
+        (2.0, 90.0),
+        (3.0, 80.0),
+        (4.0, 70.0),
+        (5.0, 60.0),
+    ])
+    .unwrap();
+    let mut params = temperature_params();
+    params.extrapolate = false;
+    params.only_make_z = true;
+    params.data_cut_lower = 3;
+    params.data_cut_upper = Some(5);
+    params.temp_0_avg_range = (1, 3);
+    params.power_step = 5.0;
+
+    let data = make_impedance_data(input, &params).unwrap();
+
+    assert_relative_eq!(data.time[0], 1.0);
+    assert_relative_eq!(data.time[1], 2.0);
+    assert_relative_eq!(data.impedance[0], (85.0 - 70.0) / 5.0);
+    assert_relative_eq!(data.impedance[1], (85.0 - 60.0) / 5.0);
+}
+
+#[test]
+fn temperature_default_averages_raw_range_then_cuts() {
     let input =
         TransientInput::from_pairs([(1.0, 20.0), (2.0, 18.0), (4.0, 16.0), (8.0, 14.0)]).unwrap();
     let mut params = temperature_params();
@@ -63,7 +89,7 @@ fn temperature_default_keeps_existing_cut_and_average_path() {
     let data = make_impedance_data(input, &params).unwrap();
 
     assert_eq!(data.time.as_slice().unwrap(), &[1.0, 3.0]);
-    assert_eq!(data.impedance.as_slice().unwrap(), &[0.0, 2.0]);
+    assert_eq!(data.impedance.as_slice().unwrap(), &[2.0, 4.0]);
 }
 
 #[test]

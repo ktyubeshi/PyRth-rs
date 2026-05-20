@@ -118,10 +118,13 @@ Goal:
 
 ### F. Theoretical And Prediction
 
-Status: theoretical RC impedance generation, standard temperature prediction,
-reusable RC/optimization-result temperature prediction helpers, and the matching
-PyO3 facades are implemented.  The PyO3 temperature prediction facade can also
-run the current RC optimization helper internally before prediction, and labeled
+Status: Python-compatible theoretical structure generation is implemented in
+core and PyO3.  The previous lumped Foster step-response helper has been
+renamed to `FosterStepResponseModel` / `foster_step_response_input` and exposed
+in PyO3 as `foster_step_response`.  Standard temperature prediction, reusable
+RC/optimization-result temperature prediction helpers, and the matching PyO3
+facades are implemented.  The PyO3 temperature prediction facade can also run
+the current RC optimization helper internally before prediction, and labeled
 temperature-prediction calls are registered in the module bookkeeping layer and
 exported as `temperature_prediction.csv` / `.svg`.
 
@@ -134,9 +137,12 @@ Owned paths:
 
 Goal:
 
-- Build the foundation for comparison, bootstrap-from-theoretical, and
-  temperature prediction workflows.  The remaining work is full Python-style
-  orchestration plus richer power/temperature prediction export parity.
+- Preserve the rule that same-name public APIs have the same meaning as Python.
+  Different physical models must use different names.
+- Use Python-generated fixtures as the default parity oracle for theoretical
+  arrays and impedance output.
+- Continue with full Python-style orchestration plus richer power/temperature
+  prediction export parity.
 
 ### G. Comparison Metrics
 

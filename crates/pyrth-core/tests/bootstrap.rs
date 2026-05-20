@@ -1,11 +1,11 @@
 use pyrth_core::{
-    bootstrap_from_impedance_data, bootstrap_from_theoretical, theoretical_impedance_input,
-    DeconvMode, EvaluationParams, TheoreticalModel,
+    bootstrap_from_foster_step_response, bootstrap_from_impedance_data, foster_step_response_input,
+    DeconvMode, EvaluationParams, FosterStepResponseModel,
 };
 
 #[test]
-fn bootstrap_from_theoretical_returns_deterministic_finite_means() {
-    let model = TheoreticalModel::from_slices(&[0.5, 1.5], &[0.02, 0.2]).unwrap();
+fn bootstrap_from_foster_step_response_returns_deterministic_finite_means() {
+    let model = FosterStepResponseModel::from_slices(&[0.5, 1.5], &[0.02, 0.2]).unwrap();
     let mut params = EvaluationParams::default();
     params.deconv_mode = DeconvMode::Fourier;
     params.log_time_size = 64;
@@ -13,9 +13,10 @@ fn bootstrap_from_theoretical_returns_deterministic_finite_means() {
     params.min_index = 1;
     params.calc_struc = false;
 
-    let result = bootstrap_from_theoretical(&model, 1e-5, 10.0, 96, 4, 1e-6, &params, 42).unwrap();
+    let result =
+        bootstrap_from_foster_step_response(&model, 1e-5, 10.0, 96, 4, 1e-6, &params, 42).unwrap();
     let repeated =
-        bootstrap_from_theoretical(&model, 1e-5, 10.0, 96, 4, 1e-6, &params, 42).unwrap();
+        bootstrap_from_foster_step_response(&model, 1e-5, 10.0, 96, 4, 1e-6, &params, 42).unwrap();
 
     assert_eq!(result.successful_repetitions, 4);
     assert_eq!(result.impedance_mean.len(), 96);
@@ -58,7 +59,7 @@ fn bootstrap_from_theoretical_returns_deterministic_finite_means() {
 
 #[test]
 fn bootstrap_from_impedance_data_returns_seeded_deterministic_bands() {
-    let input = theoretical_impedance_input(&[0.5, 1.5], &[0.02, 0.2], 1e-5, 10.0, 96).unwrap();
+    let input = foster_step_response_input(&[0.5, 1.5], &[0.02, 0.2], 1e-5, 10.0, 96).unwrap();
     let mut params = EvaluationParams::default();
     params.deconv_mode = DeconvMode::Fourier;
     params.log_time_size = 64;
